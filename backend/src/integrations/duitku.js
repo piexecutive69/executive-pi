@@ -26,6 +26,7 @@ export async function createDuitkuInvoice({
   callbackUrl,
   returnUrl,
   expiryPeriod = 60,
+  paymentMethod = 'VC',
 }) {
   if (!merchantCode || !apiKey) {
     throw new Error('DUITKU_MERCHANT_CODE and DUITKU_API_KEY are required')
@@ -40,6 +41,7 @@ export async function createDuitkuInvoice({
     merchantCode,
     paymentAmount: Math.round(amount),
     merchantOrderId,
+    paymentMethod,
     productDetails,
     customerVaName: customerName || 'PI Store User',
     email,

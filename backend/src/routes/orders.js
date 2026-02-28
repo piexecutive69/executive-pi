@@ -1,5 +1,3 @@
-import { createDuitkuInvoice } from '../integrations/duitku.js'
-
 function toInt(value) {
   return Number(value || 0)
 }
@@ -27,7 +25,7 @@ export async function orderRoutes(app) {
           required: ['userId'],
           properties: {
             userId: { type: 'integer' },
-            paymentMethod: { type: 'string', enum: ['wallet_idr', 'duitku'] },
+            paymentMethod: { type: 'string', enum: ['wallet_idr', 'pi_sdk'] },
             shippingAddress: { type: ['string', 'null'] },
             shippingIdr: { type: 'integer' },
           },
@@ -61,8 +59,8 @@ export async function orderRoutes(app) {
       return reply.code(400).send({ message: 'userId is required' })
     }
 
-    if (!['wallet_idr', 'duitku'].includes(paymentMethod)) {
-      return reply.code(400).send({ message: 'paymentMethod must be wallet_idr or duitku' })
+    if (!['wallet_idr', 'pi_sdk'].includes(paymentMethod)) {
+      return reply.code(400).send({ message: 'paymentMethod must be wallet_idr or pi_sdk' })
     }
 
     const conn = await app.mysql.getConnection()
@@ -97,14 +95,17 @@ export async function orderRoutes(app) {
       }
 
       const subtotalIdr = cartItems.reduce((sum, item) => sum + Number(item.price_idr) * item.qty, 0)
+      const subtotalPi = cartItems.reduce((sum, item) => sum + Number(item.price_pi || 0) * item.qty, 0)
+      const shippingPi = 0
       const totalIdr = subtotalIdr + shippingIdr
+      const totalPi = subtotalPi + shippingPi
 
-      const initialStatus = paymentMethod === 'wallet_idr' ? 'paid' : 'waiting_payment'
+      const initialStatus = 'paid'
       const [orderResult] = await conn.query(
         `INSERT INTO orders
          (user_id, status, subtotal_idr, subtotal_pi, shipping_idr, shipping_pi, total_idr, total_pi, payment_method, shipping_address)
-         VALUES (?, ?, ?, 0, ?, 0, ?, 0, ?, ?)`,
-        [userId, initialStatus, subtotalIdr, shippingIdr, totalIdr, paymentMethod, shippingAddress],
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, initialStatus, subtotalIdr, subtotalPi, shippingIdr, shippingPi, totalIdr, totalPi, paymentMethod, shippingAddress],
       )
       const orderId = orderResult.insertId
 
@@ -113,8 +114,8 @@ export async function orderRoutes(app) {
         await conn.query(
           `INSERT INTO order_items
            (order_id, product_id, product_name, qty, unit_price_idr, unit_price_pi, line_total_idr, line_total_pi)
-           VALUES (?, ?, ?, ?, ?, 0, ?, 0)`,
-          [orderId, item.product_id, item.name, item.qty, item.price_idr, lineTotalIdr],
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [orderId, item.product_id, item.name, item.qty, item.price_idr, Number(item.price_pi || 0), lineTotalIdr, Number(item.price_pi || 0) * item.qty],
         )
 
         await conn.query('UPDATE products SET stock = stock - ? WHERE id = ?', [item.qty, item.product_id])
@@ -139,54 +140,45 @@ export async function orderRoutes(app) {
           amountIdr: totalIdr,
         }
       } else {
-        const [gatewayRows] = await conn.query("SELECT id FROM payment_gateways WHERE code = 'duitku' LIMIT 1")
+        const [gatewayRows] = await conn.query("SELECT id FROM payment_gateways WHERE code = 'pi_sdk' LIMIT 1")
         if (!gatewayRows.length) {
           await conn.rollback()
-          return reply.code(500).send({ message: 'Duitku gateway config is missing in payment_gateways table' })
+          return reply.code(500).send({ message: 'Pi SDK gateway config is missing in payment_gateways table' })
         }
 
-        const externalReference = makeExternalRef('DUITKU-ORDER', orderId)
-        const duitkuInvoice = await createDuitkuInvoice({
-          merchantCode: process.env.DUITKU_MERCHANT_CODE,
-          apiKey: process.env.DUITKU_API_KEY,
-          environment: process.env.DUITKU_ENV || 'sandbox',
-          merchantOrderId: externalReference,
-          paymentAmount: totalIdr,
-          productDetails: `Checkout Order #${orderId}`,
-          customerName: users[0].name,
-          email: users[0].email,
-          phoneNumber: users[0].phone,
-          callbackUrl: process.env.DUITKU_ORDER_CALLBACK_URL || 'http://localhost:3100/api/orders/duitku/callback',
-          returnUrl: process.env.DUITKU_RETURN_URL,
-        })
-        const paymentUrl = duitkuInvoice.paymentUrl
+        if (Number(users[0].pi_balance) < totalPi) {
+          await conn.rollback()
+          return reply.code(400).send({
+            message: 'Insufficient Pi balance',
+            required: totalPi,
+            current: Number(users[0].pi_balance),
+          })
+        }
 
-        const [paymentResult] = await conn.query(
+        await conn.query('UPDATE users SET pi_balance = pi_balance - ? WHERE id = ?', [totalPi, userId])
+        await conn.query(
           `INSERT INTO payment_transactions
            (user_id, gateway_id, source_type, source_reference_id, external_reference, amount_idr, amount_pi, status, request_payload)
-           VALUES (?, ?, 'order', ?, ?, ?, 0, 'pending', ?)`,
+           VALUES (?, ?, 'order', ?, ?, 0, ?, 'paid', ?)`,
           [
             userId,
             gatewayRows[0].id,
             orderId,
-            externalReference,
-            totalIdr,
+            makeExternalRef('PI-SDK-ORDER', orderId),
+            totalPi,
             JSON.stringify({
-              method: 'duitku',
+              method: 'pi_sdk',
               orderId,
-              amountIdr: totalIdr,
-              shippingAddress,
-              duitku: duitkuInvoice.gatewayResponse,
+              amountPi: totalPi,
+              shippingAddress
             }),
           ],
         )
 
         payment = {
-          method: 'duitku',
-          status: 'pending',
-          paymentTransactionId: paymentResult.insertId,
-          externalReference,
-          paymentUrl,
+          method: 'pi_sdk',
+          status: 'paid',
+          amountPi: totalPi,
         }
       }
 
@@ -197,8 +189,11 @@ export async function orderRoutes(app) {
         orderId,
         status: initialStatus,
         subtotalIdr,
+        subtotalPi,
         shippingIdr,
+        shippingPi,
         totalIdr,
+        totalPi,
         currency: 'IDR',
         payment,
       })

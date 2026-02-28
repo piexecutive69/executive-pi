@@ -78,7 +78,9 @@ export async function walletRoutes(app) {
               totalIdr: { type: 'number' },
               status: { type: 'string' },
               externalReference: { type: 'string' },
+              paymentReference: { type: ['string', 'null'] },
               paymentUrl: { type: ['string', 'null'] },
+              qrString: { type: ['string', 'null'] },
             },
           },
           400: { type: 'object', properties: { message: { type: 'string' } } },
@@ -124,6 +126,7 @@ export async function walletRoutes(app) {
         merchantCode: process.env.DUITKU_MERCHANT_CODE,
         apiKey: process.env.DUITKU_API_KEY,
         environment: process.env.DUITKU_ENV || 'sandbox',
+        paymentMethod: process.env.DUITKU_PAYMENT_METHOD || 'VC',
         merchantOrderId: externalReference,
         paymentAmount: totalIdr,
         productDetails: `Topup Saldo IDR PI Store (${amountIdr})`,
@@ -131,6 +134,8 @@ export async function walletRoutes(app) {
         returnUrl: process.env.DUITKU_RETURN_URL,
       })
       const paymentUrl = duitkuInvoice.paymentUrl
+      const paymentReference = duitkuInvoice.gatewayResponse?.reference || null
+      const qrString = duitkuInvoice.gatewayResponse?.qrString || null
 
       const [paymentResult] = await conn.query(
         `INSERT INTO payment_transactions
@@ -176,7 +181,9 @@ export async function walletRoutes(app) {
         totalIdr,
         status: 'pending',
         externalReference,
+        paymentReference,
         paymentUrl,
+        qrString,
       })
     } catch (error) {
       await conn.rollback()

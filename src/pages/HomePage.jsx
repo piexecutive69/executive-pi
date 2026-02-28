@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'react-toastify'
 import { Dumbbell, ShoppingBag, Sparkles, UserRound, Venus } from 'lucide-react'
 import ProductGrid from '../components/ProductGrid'
 import SeoMeta from '../components/SeoMeta'
 
-export default function HomePage({ heroSlides, categories, products, loading }) {
+export default function HomePage({ heroSlides, categories, products, loading, userId, wishlistItems, onToggleWishlist }) {
   const [active, setActive] = useState(0)
   const categoryIcons = [UserRound, Venus, ShoppingBag, Sparkles, Dumbbell]
 
@@ -11,6 +12,17 @@ export default function HomePage({ heroSlides, categories, products, loading }) 
     const id = window.setInterval(() => setActive((prev) => (prev + 1) % heroSlides.length), 4500)
     return () => window.clearInterval(id)
   }, [heroSlides.length])
+
+  const wishlistIdSet = new Set((wishlistItems || []).map((item) => Number(item.id)))
+
+  const handleToggleWishlist = (product) => {
+    const result = onToggleWishlist?.(product)
+    if (!result?.ok) {
+      toast.error('Login dulu di tab Profile untuk pakai wishlist.')
+      return
+    }
+    toast.success(result.active ? 'Ditambahkan ke wishlist.' : 'Dihapus dari wishlist.')
+  }
 
   return (
     <>
@@ -72,12 +84,25 @@ export default function HomePage({ heroSlides, categories, products, loading }) 
             VIEW ALL
           </button>
         </div>
-        <ProductGrid items={products.slice(0, 2)} />
+        <ProductGrid
+          items={products.slice(0, 2)}
+          wishlistIdSet={wishlistIdSet}
+          onToggleWishlist={handleToggleWishlist}
+        />
       </section>
 
       <section className="mt-5 pb-20">
         <h3 className="mb-3 text-[17px] font-medium text-[#e3ebfb]">All Products</h3>
-        {loading ? <p className="text-[13px] text-[#8ea6d7]">Memuat produk...</p> : <ProductGrid items={products} />}
+        {loading ? (
+          <p className="text-[13px] text-[#8ea6d7]">Memuat produk...</p>
+        ) : (
+          <ProductGrid
+            items={products}
+            wishlistIdSet={wishlistIdSet}
+            onToggleWishlist={handleToggleWishlist}
+            userId={userId}
+          />
+        )}
       </section>
     </>
   )

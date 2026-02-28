@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bell, CircleHelp, CreditCard, FileText, Settings, ShieldCheck, ShoppingBag, UserRound } from 'lucide-react'
-import { api } from '../lib/api'
+import { Bell, CircleHelp, FileText, Settings, ShieldCheck, ShoppingBag, UserRound } from 'lucide-react'
+import { api, toApiAssetUrl } from '../lib/api'
 import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import { useI18n } from '../lib/i18n'
@@ -11,7 +11,6 @@ const profileMenus = [
   { key: 'wishlist', idLabel: 'Wishlist', enLabel: 'Wishlist', icon: UserRound },
   { key: 'notifications', idLabel: 'Notifikasi', enLabel: 'Notifications', icon: Bell },
   { key: 'settings', idLabel: 'Pengaturan', enLabel: 'Settings', icon: Settings },
-  { key: 'payments', idLabel: 'Metode Pembayaran', enLabel: 'Payment Methods', icon: CreditCard },
   { key: 'privacy', idLabel: 'Kebijakan Privasi', enLabel: 'Privacy Policy', icon: ShieldCheck },
   { key: 'terms', idLabel: 'Syarat & Ketentuan', enLabel: 'Terms & Conditions', icon: FileText },
   { key: 'help', idLabel: 'Pusat Bantuan', enLabel: 'Help Center', icon: CircleHelp },
@@ -48,6 +47,7 @@ export default function ProfilePage({ user, onLogout }) {
     () => ({
       name: user?.name || 'Guest User',
       email: user?.email || (lang === 'en' ? 'Not logged in' : 'Belum login'),
+      profileImageUrl: toApiAssetUrl(user?.profile_image_url) || '/assets/img/profile.jpg',
     }),
     [user, lang],
   )
@@ -64,7 +64,15 @@ export default function ProfilePage({ user, onLogout }) {
 
       <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 shadow-[0_1px_4px_rgba(0,0,0,.24)]">
         <div className="flex items-center gap-3">
-          <img src="/assets/img/profile.jpg" alt={displayUser.name} className="h-16 w-16 rounded-full object-cover" />
+          <img
+            src={displayUser.profileImageUrl}
+            alt={displayUser.name}
+            className="h-16 w-16 rounded-full object-cover"
+            onError={(e) => {
+              e.currentTarget.onerror = null
+              e.currentTarget.src = '/assets/img/profile.jpg'
+            }}
+          />
           <div>
             <p className="text-[16px] font-medium leading-tight text-[#e3ebfb]">{displayUser.name}</p>
             <p className="text-[12px] text-[#8ea6d7]">{displayUser.email}</p>

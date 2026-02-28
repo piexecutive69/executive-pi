@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { formatIDR, formatPi } from '../lib/format'
 
-export default function ProductGrid({ items }) {
+export default function ProductGrid({ items, wishlistIdSet = new Set(), onToggleWishlist }) {
   if (!items.length) {
     return <p className="text-[13px] text-[#8ea6d7]">Belum ada produk.</p>
   }
@@ -15,9 +15,18 @@ export default function ProductGrid({ items }) {
           className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-2 shadow-[0_1px_4px_rgba(0,0,0,.24)]"
         >
           <div className="relative h-[116px] rounded-[4px] bg-[#162a57]">
-            <span className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-[#0b1632]">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onToggleWishlist?.(item)
+              }}
+              className={`absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full ${wishlistIdSet.has(Number(item.id)) ? 'bg-[#274786]' : 'bg-[#0b1632]'}`}
+              aria-label="toggle wishlist"
+            >
               <img src="/assets/img/icons/heart-dark.svg" alt="" className="h-[13px] w-[13px]" />
-            </span>
+            </button>
             <img
               src={item.image || item.image_url}
               alt={item.name}

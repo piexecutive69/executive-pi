@@ -1,6 +1,30 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3100'
+function resolveApiBaseUrl() {
+  const explicit = import.meta.env.VITE_API_BASE_URL
+  if (explicit) return explicit
+
+  if (typeof window === 'undefined') {
+    return 'http://localhost:3100'
+  }
+
+  const { hostname, protocol } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:3100'
+  }
+
+  const safeProtocol = protocol === 'https:' ? 'https' : 'http'
+  return `${safeProtocol}://${hostname}:3100`
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
 const API_KEY = import.meta.env.VITE_API_KEY || 'pi-store-local-dev-key'
 const DEFAULT_USER_ID = Number(import.meta.env.VITE_DEFAULT_USER_ID || 1)
+const API_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE_URL).origin
+  } catch {
+    return API_BASE_URL
+  }
+})()
 
 function toQueryString(query = {}) {
   const params = new URLSearchParams()
@@ -14,14 +38,25 @@ function toQueryString(query = {}) {
 
 async function request(path, { method = 'GET', query, body } = {}) {
   const url = `${API_BASE_URL}${path}${toQueryString(query)}`
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
+  const hasBody = body !== undefined && body !== null
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  const headers = {
+    'x-api-key': API_KEY,
+  }
+  if (!isFormData && hasBody) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  let response
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: hasBody ? (isFormData ? body : JSON.stringify(body)) : undefined,
+    })
+  } catch {
+    throw new Error(`Failed to fetch API: ${url}`)
+  }
 
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
@@ -32,10 +67,56 @@ async function request(path, { method = 'GET', query, body } = {}) {
 }
 
 export const apiDefaultUserId = DEFAULT_USER_ID
+export const apiBaseUrl = API_BASE_URL
+export const apiOrigin = API_ORIGIN
+
+export function toApiAssetUrl(assetPath) {
+  if (!assetPath) return ''
+  if (/^https?:\/\//i.test(assetPath)) return assetPath
+  return `${API_ORIGIN}${String(assetPath).startsWith('/') ? '' : '/'}${assetPath}`
+}
 
 export const api = {
   getUser(userId = DEFAULT_USER_ID) {
     return request(`/api/users/${userId}`)
+  },
+
+  getUserProfile(userId = DEFAULT_USER_ID) {
+    return request(`/api/users/${userId}/profile`)
+  },
+
+  updateUserProfile(userId = DEFAULT_USER_ID, payload = {}) {
+    return request(`/api/users/${userId}/profile`, {
+      method: 'PATCH',
+      body: payload,
+    })
+  },
+
+  uploadUserProfileImage(userId = DEFAULT_USER_ID, file) {
+    const formData = new FormData()
+    formData.append('image', file)
+    return request(`/api/users/${userId}/profile-image`, {
+      method: 'POST',
+      body: formData,
+    })
+  },
+
+  updateUserPassword(userId = DEFAULT_USER_ID, { newPassword }) {
+    return request(`/api/users/${userId}/password`, {
+      method: 'PATCH',
+      body: { newPassword },
+    })
+  },
+
+  getUserAddress(userId = DEFAULT_USER_ID) {
+    return request(`/api/users/${userId}/address`)
+  },
+
+  upsertUserAddress(userId = DEFAULT_USER_ID, payload = {}) {
+    return request(`/api/users/${userId}/address`, {
+      method: 'PUT',
+      body: payload,
+    })
   },
 
   loginByPhone({ phone, password }) {
@@ -109,6 +190,22 @@ export const api = {
 
   listPpobServices() {
     return request('/api/ppob/services')
+  },
+
+  listProvinces() {
+    return request('/api/wilayah/provinces')
+  },
+
+  listRegencies(provinceId) {
+    return request('/api/wilayah/regencies', { query: { provinceId } })
+  },
+
+  listDistricts(regencyId) {
+    return request('/api/wilayah/districts', { query: { regencyId } })
+  },
+
+  listVillages(districtId) {
+    return request('/api/wilayah/villages', { query: { districtId } })
   },
 
   listDigiflazzProducts({ type = 'prepaid', userId = null, page = 1, limit = 30, search = '', brand = '', category = '' } = {}) {

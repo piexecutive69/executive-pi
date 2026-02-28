@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import LoginRequiredCard from '../components/LoginRequiredCard'
 
-export default function CartPage({ userId, onRefreshUser }) {
+export default function CartPage({ userId, onRefreshUser, onCartChanged }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -17,12 +18,13 @@ export default function CartPage({ userId, onRefreshUser }) {
     try {
       const data = await api.getCart(userId)
       setItems(data.items || [])
+      if (onCartChanged) onCartChanged(userId)
     } catch (err) {
       setError(err.message || 'Gagal memuat keranjang.')
     } finally {
       setLoading(false)
     }
-  }, [userId])
+  }, [onCartChanged, userId])
 
   useEffect(() => {
     if (!userId) {
@@ -129,8 +131,14 @@ export default function CartPage({ userId, onRefreshUser }) {
                             +
                           </button>
                         </div>
-                        <button type="button" onClick={() => removeItem(item.id)} className="text-[11px] text-red-200">
-                          Hapus
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="grid h-7 w-7 place-items-center rounded-full border border-red-300/25 bg-red-400/10 text-red-200"
+                          aria-label="Hapus item"
+                          title="Hapus item"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -163,15 +171,15 @@ export default function CartPage({ userId, onRefreshUser }) {
                 onClick={() => checkout('wallet_idr')}
                 className="rounded-full bg-[#274786] py-2 text-[13px] font-medium text-[#e3ebfb] disabled:opacity-60"
               >
-                Wallet IDR
+                Saldo IDR
               </button>
               <button
                 type="button"
                 disabled={submitting || !items.length}
-                onClick={() => checkout('duitku')}
+                onClick={() => checkout('pi_sdk')}
                 className="rounded-full border border-[#6e8dc8]/35 bg-[#162a57] py-2 text-[13px] font-medium text-[#e3ebfb] disabled:opacity-60"
               >
-                Bayar Duitku
+                Pi SDK
               </button>
             </div>
           </div>

@@ -1,7 +1,11 @@
 import 'dotenv/config'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
 import mysql from '@fastify/mysql'
+import fastifyStatic from '@fastify/static'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { healthRoutes } from './routes/health.js'
@@ -12,10 +16,14 @@ import { ppobRoutes } from './routes/ppob.js'
 import { userRoutes } from './routes/users.js'
 import { digiflazzRoutes } from './routes/digiflazz.js'
 import { walletRoutes } from './routes/wallet.js'
+import { wilayahRoutes } from './routes/wilayah.js'
 
 const app = Fastify({
   logger: true,
 })
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const uploadsRoot = path.resolve(__dirname, '../uploads')
 
 await app.register(swagger, {
   openapi: {
@@ -52,6 +60,21 @@ await app.register(swaggerUi, {
 
 await app.register(cors, {
   origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-api-key'],
+})
+
+await app.register(multipart, {
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+  },
+})
+
+await app.register(fastifyStatic, {
+  root: uploadsRoot,
+  prefix: '/uploads/',
+  decorateReply: false,
 })
 
 await app.register(mysql, {
@@ -109,6 +132,7 @@ await app.register(orderRoutes, { prefix: '/api/orders' })
 await app.register(ppobRoutes, { prefix: '/api/ppob' })
 await app.register(digiflazzRoutes, { prefix: '/api/digiflazz' })
 await app.register(walletRoutes, { prefix: '/api/wallet' })
+await app.register(wilayahRoutes, { prefix: '/api/wilayah' })
 
 const port = Number(process.env.PORT || 3100)
 const host = process.env.HOST || '0.0.0.0'

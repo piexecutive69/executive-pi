@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'react-toastify'
 import LoginRequiredCard from '../components/LoginRequiredCard'
+import ProfileSettingsForm from '../components/ProfileSettingsForm'
 import SeoMeta from '../components/SeoMeta'
 import { api } from '../lib/api'
 import { formatIDR } from '../lib/format'
@@ -19,14 +20,16 @@ const menuMeta = {
   help: { idTitle: 'Pusat Bantuan', enTitle: 'Help Center' },
 }
 
-export default function ProfileMenuPage({ user }) {
+export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [], onToggleWishlist }) {
   const { lang } = useI18n()
   const navigate = useNavigate()
   const { menuKey = '' } = useParams()
   const userId = user?.id || null
   const [orders, setOrders] = useState([])
   const [topupAmount, setTopupAmount] = useState(10000)
+  const [topupLoading, setTopupLoading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [topupQris, setTopupQris] = useState({ open: false, url: '', reference: '', qrString: '' })
 
   const currentMenu = useMemo(() => menuMeta[menuKey] || null, [menuKey])
   const currentMenuTitle = currentMenu ? (lang === 'en' ? currentMenu.enTitle : currentMenu.idTitle) : ''
@@ -60,14 +63,20 @@ export default function ProfileMenuPage({ user }) {
       toast.error(lang === 'en' ? 'Top up amount must be greater than 0.' : 'Nominal topup harus lebih dari 0.')
       return
     }
+    setTopupLoading(true)
     try {
       const res = await api.topupWalletDuitku({ userId, amountIdr: Number(topupAmount) })
       toast.success(lang === 'en' ? 'Top up invoice created successfully.' : 'Invoice topup berhasil dibuat.')
-      if (res.paymentUrl) {
-        window.open(res.paymentUrl, '_blank', 'noopener,noreferrer')
-      }
+      setTopupQris({
+        open: true,
+        url: res.paymentUrl || '',
+        reference: res.paymentReference || res.externalReference || '',
+        qrString: res.qrString || '',
+      })
     } catch (err) {
       toast.error(err.message || (lang === 'en' ? 'Failed to create top up.' : 'Gagal membuat topup.'))
+    } finally {
+      setTopupLoading(false)
     }
   }
 
@@ -122,17 +131,119 @@ export default function ProfileMenuPage({ user }) {
               min={1000}
               value={topupAmount}
               onChange={(e) => setTopupAmount(e.target.value)}
+              disabled={topupLoading}
               className="h-10 flex-1 rounded-full border border-[#6e8dc8]/25 bg-[#162a57] px-4 text-[13px] text-[#c4d3f2] outline-none"
             />
-            <button type="button" onClick={topup} className="cursor-pointer rounded-full bg-[#274786] px-4 text-[12px] font-medium text-[#e3ebfb]">
-              {lang === 'en' ? 'Top Up' : 'Topup'}
+            <button
+              type="button"
+              onClick={topup}
+              disabled={topupLoading}
+              className="cursor-pointer rounded-full bg-[#274786] px-4 text-[12px] font-medium text-[#e3ebfb] disabled:opacity-60"
+            >
+              {topupLoading ? (lang === 'en' ? 'Loading QRIS...' : 'Memuat QRIS...') : lang === 'en' ? 'Top Up' : 'Topup'}
             </button>
           </div>
+          {topupLoading ? (
+            <div className="mt-3 rounded-md border border-[#6e8dc8]/25 bg-[#162a57] p-3">
+              <p className="text-[12px] text-[#c4d3f2]">{lang === 'en' ? 'Generating QRIS, please wait...' : 'Membuat QRIS, mohon tunggu...'}</p>
+              <div className="mt-2 h-[300px] animate-pulse rounded-md bg-[#0f2046]" />
+            </div>
+          ) : null}
+          {topupQris.reference ? (
+            <p className="mt-2 text-[11px] text-[#8ea6d7]">
+              Ref: {topupQris.reference}
+            </p>
+          ) : null}
+          {topupQris.open ? (
+            <div className="mt-3 rounded-md border border-[#6e8dc8]/25 bg-[#162a57] p-2">
+              <p className="mb-2 text-[12px] text-[#c4d3f2]">
+                {lang === 'en' ? 'Scan this QRIS directly from app.' : 'Scan QRIS ini langsung dari aplikasi.'}
+              </p>
+              {topupQris.qrString ? (
+                <img
+                  src={`https://quickchart.io/qr?size=300&text=${encodeURIComponent(topupQris.qrString)}`}
+                  alt="QRIS"
+                  className="mx-auto h-[300px] w-[300px] rounded-md border border-[#6e8dc8]/20 bg-white p-2"
+                />
+              ) : (
+                <p className="rounded-md border border-amber-300/20 bg-amber-400/10 p-2 text-[11px] text-amber-200">
+                  {lang === 'en'
+                    ? 'QR string is unavailable. Please use the payment page link.'
+                    : 'QR string tidak tersedia. Silakan gunakan link halaman pembayaran.'}
+                </p>
+              )}
+              {topupQris.qrString ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(topupQris.qrString)
+                    toast.success(lang === 'en' ? 'QR string copied.' : 'QR string berhasil disalin.')
+                  }}
+                  className="mt-2 w-full rounded-full border border-[#6e8dc8]/35 bg-[#0f2046] py-2 text-[12px] text-[#e3ebfb]"
+                >
+                  {lang === 'en' ? 'Copy QR String' : 'Salin QR String'}
+                </button>
+              ) : null}
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTopupQris((prev) => ({ ...prev, open: false }))}
+                  className="rounded-full border border-[#6e8dc8]/35 bg-[#0f2046] py-2 text-[12px] text-[#e3ebfb]"
+                >
+                  {lang === 'en' ? 'Close QRIS' : 'Tutup QRIS'}
+                </button>
+                <a
+                  href={topupQris.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full bg-[#274786] py-2 text-center text-[12px] font-medium text-[#e3ebfb]"
+                >
+                  {lang === 'en' ? 'Open New Tab' : 'Buka Tab Baru'}
+                </a>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {userId && menuKey === 'wishlist' ? (
-        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">{lang === 'en' ? 'Wishlist is not available yet.' : 'Wishlist belum tersedia.'}</div>
+        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3">
+          {wishlistItems.length ? (
+            <div className="space-y-2">
+              {wishlistItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-2 py-2">
+                  <img
+                    src={item.image_url || '/assets/img/profile.jpg'}
+                    alt={item.name}
+                    className="h-12 w-12 rounded-md object-cover"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null
+                      e.currentTarget.src = '/assets/img/profile.jpg'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => navigate(`/product/${item.id}`)}
+                  >
+                    <p className="truncate text-[12px] font-medium text-[#e3ebfb]">{item.name}</p>
+                    <p className="text-[11px] text-[#8ea6d7]">{item.category_name}</p>
+                    <p className="text-[11px] text-[#9fd0ff]">{formatIDR(item.price_idr)}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleWishlist?.(item)}
+                    className="cursor-pointer rounded-full border border-[#6e8dc8]/30 bg-[#1b3368] px-3 py-1 text-[11px] text-[#e3ebfb]"
+                  >
+                    {lang === 'en' ? 'Remove' : 'Hapus'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-[#c4d3f2]">{lang === 'en' ? 'Wishlist is empty.' : 'Wishlist masih kosong.'}</p>
+          )}
+        </div>
       ) : null}
 
       {userId && menuKey === 'notifications' ? (
@@ -256,10 +367,7 @@ export default function ProfileMenuPage({ user }) {
       ) : null}
 
       {userId && menuKey === 'settings' ? (
-        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
-          {lang === 'en' ? 'Account settings will be added gradually.' : 'Pengaturan akun akan ditambahkan bertahap.'}{' '}
-          <Link to="/profile" className="text-[#9fd0ff]">{lang === 'en' ? 'Back to profile' : 'Kembali ke profile'}</Link>.
-        </div>
+        <ProfileSettingsForm userId={userId} user={user} lang={lang} onUserUpdated={onUserUpdated} />
       ) : null}
     </section>
   )
