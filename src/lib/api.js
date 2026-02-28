@@ -6,13 +6,12 @@ function resolveApiBaseUrl() {
     return 'http://localhost:3100'
   }
 
-  const { hostname, protocol } = window.location
+  const { hostname, origin } = window.location
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3100'
   }
 
-  const safeProtocol = protocol === 'https:' ? 'https' : 'http'
-  return `${safeProtocol}://${hostname}:3100`
+  return origin
 }
 
 const API_BASE_URL = resolveApiBaseUrl()
