@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Dumbbell, ShoppingBag, Sparkles, UserRound, Venus } from 'lucide-react'
 import ProductGrid from '../components/ProductGrid'
+import SeoMeta from '../components/SeoMeta'
 
-export default function HomePage({ heroSlides, categories, products }) {
+export default function HomePage({ heroSlides, categories, products, loading }) {
   const [active, setActive] = useState(0)
   const categoryIcons = [UserRound, Venus, ShoppingBag, Sparkles, Dumbbell]
 
@@ -13,6 +14,10 @@ export default function HomePage({ heroSlides, categories, products }) {
 
   return (
     <>
+      <SeoMeta
+        title="Marketplace"
+        description="Marketplace Pi Executive dengan katalog produk pilihan, pembayaran Pi, dan pengalaman mobile-first."
+      />
       <section className="rounded-[10px] border border-[#6e8dc8]/20 bg-[#121f3f] p-2 shadow-[0_1px_4px_rgba(0,0,0,.22)]">
         <div className="relative overflow-hidden rounded-[8px] bg-[#102043]">
           <div className="flex transition-transform duration-500" style={{ transform: `translateX(-${active * 100}%)` }}>
@@ -72,7 +77,7 @@ export default function HomePage({ heroSlides, categories, products }) {
 
       <section className="mt-5 pb-20">
         <h3 className="mb-3 text-[17px] font-medium text-[#e3ebfb]">All Products</h3>
-        <ProductGrid items={products} />
+        {loading ? <p className="text-[13px] text-[#8ea6d7]">Memuat produk...</p> : <ProductGrid items={products} />}
       </section>
     </>
   )

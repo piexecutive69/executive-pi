@@ -8,3 +8,15 @@
 body {
   margin: 0;
 }
+
+.pi-browser-frame {
+  min-height: 100svh;
+}
+
+@media (min-width: 980px) {
+  .pi-browser-frame {
+    width: 750px;
+    min-height: 1500px;
+    margin-inline: auto;
+  }
+}

@@ -1,14 +1,16 @@
 import { NavLink } from 'react-router-dom'
 import { House, ReceiptText, ShoppingCart, User } from 'lucide-react'
-
-const menus = [
-  { to: '/', label: 'Home', icon: House },
-  { to: '/ppob', label: 'PPOB', icon: ReceiptText },
-  { to: '/cart', label: 'Cart', icon: ShoppingCart },
-  { to: '/profile', label: 'Profile', icon: User },
-]
+import { useI18n } from '../lib/i18n'
 
 export default function BottomNav() {
+  const { t } = useI18n()
+  const menus = [
+    { to: '/', label: t('navHome'), icon: House },
+    { to: '/ppob', label: t('navPpob'), icon: ReceiptText },
+    { to: '/cart', label: t('navCart'), icon: ShoppingCart },
+    { to: '/profile', label: t('navProfile'), icon: User },
+  ]
+
   return (
     <nav className="fixed bottom-2 left-1/2 z-20 flex w-[calc(100%-12px)] -translate-x-1/2 justify-between rounded-[34px] border border-[#6e8dc8]/20 bg-[#0b1632]/95 px-4 py-2 shadow-[0_8px_24px_rgba(0,0,0,.32)] md:max-w-[376px]">
       {menus.map((menu) => (

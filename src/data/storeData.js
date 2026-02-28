@@ -13,10 +13,50 @@ export const categories = [
 ]
 
 export const products = [
-  { name: 'Leather Bag', category: 'Bag', idr: 'IDR 320.000', pi: '3.2 Pi', image: '/assets/img/products/product1.png' },
-  { name: 'Lipstick', category: 'Cosmetics', idr: 'IDR 30.000', pi: '0.3 Pi', image: '/assets/img/products/product2.png' },
-  { name: 'Sports Shoe', category: 'Shoe', idr: 'IDR 20.000', pi: '0.2 Pi', image: '/assets/img/products/product3.png' },
-  { name: 'Premium Shoe', category: 'Shoe', idr: 'IDR 120.000', pi: '1.2 Pi', image: '/assets/img/products/product4.png' },
+  {
+    id: 'leather-bag',
+    name: 'Leather Bag',
+    category: 'Bag',
+    idr: 'IDR 320.000',
+    pi: '3.2 Pi',
+    rating: 4.8,
+    stock: 22,
+    image: '/assets/img/products/product1.png',
+    description: 'Tas kulit premium untuk kebutuhan harian dengan kompartemen utama luas dan material tahan lama.',
+  },
+  {
+    id: 'lipstick',
+    name: 'Lipstick',
+    category: 'Cosmetics',
+    idr: 'IDR 30.000',
+    pi: '0.3 Pi',
+    rating: 4.6,
+    stock: 43,
+    image: '/assets/img/products/product2.png',
+    description: 'Lipstick matte dengan warna tahan lama, ringan di bibir, dan cocok untuk aktivitas sehari-hari.',
+  },
+  {
+    id: 'sports-shoe',
+    name: 'Sports Shoe',
+    category: 'Shoe',
+    idr: 'IDR 20.000',
+    pi: '0.2 Pi',
+    rating: 4.7,
+    stock: 31,
+    image: '/assets/img/products/product3.png',
+    description: 'Sepatu olahraga ringan dengan grip kuat dan sirkulasi udara yang nyaman untuk penggunaan aktif.',
+  },
+  {
+    id: 'premium-shoe',
+    name: 'Premium Shoe',
+    category: 'Shoe',
+    idr: 'IDR 120.000',
+    pi: '1.2 Pi',
+    rating: 4.9,
+    stock: 14,
+    image: '/assets/img/products/product4.png',
+    description: 'Sepatu premium dengan desain eksklusif, bantalan empuk, dan detail finishing berkualitas tinggi.',
+  },
 ]
 
 export const drawerMenus = [
