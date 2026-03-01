@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { toast } from 'react-toastify'
 import { api } from '../lib/api'
 import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import LoginRequiredCard from '../components/LoginRequiredCard'
+import { authenticateWithPiSdk, getPiSdkSession, savePiSdkSession } from '../lib/piSdk'
 
 export default function CartPage({ userId, onRefreshUser, onCartChanged }) {
   const [items, setItems] = useState([])
@@ -72,12 +74,42 @@ export default function CartPage({ userId, onRefreshUser, onCartChanged }) {
     setMessage('')
     setError('')
     try {
+      if (paymentMethod === 'pi_sdk') {
+        let piSession = getPiSdkSession()
+        if (!piSession?.accessToken) {
+          piSession = await authenticateWithPiSdk()
+        }
+
+        const syncedUser = await api.syncPiBalance(userId, {
+          accessToken: piSession.accessToken,
+          uid: piSession.uid || null,
+          username: piSession.username || null,
+          walletAddress: piSession.walletAddress || null,
+          walletSecretId: piSession.walletSecretId || null,
+        })
+
+        const nextPiSession = {
+          ...piSession,
+          username: syncedUser?.pi_auth?.username || piSession.username || null,
+          walletAddress: syncedUser?.pi_auth?.walletAddress || piSession.walletAddress || null,
+          walletSecretId: syncedUser?.pi_auth?.walletSecretId || piSession.walletSecretId || null,
+          piBalance: Number(syncedUser?.pi_auth?.piBalance ?? syncedUser?.pi_balance ?? piSession.piBalance ?? 0),
+          accessToken: piSession.accessToken || null,
+          authenticatedAt: Date.now(),
+        }
+        savePiSdkSession(nextPiSession)
+        if (onRefreshUser) onRefreshUser(syncedUser)
+      }
+
       const data = await api.checkout({
         userId,
         paymentMethod,
         shippingAddress: 'Alamat pelanggan - PI Store',
       })
       setMessage(`Checkout berhasil. Order #${data.orderId}`)
+      if (paymentMethod === 'pi_sdk') {
+        toast.info('Pembayaran Pi saat ini menggunakan saldo Pi tersimpan di backend (belum on-chain transfer).')
+      }
       if (data.payment?.paymentUrl) {
         window.open(data.payment.paymentUrl, '_blank', 'noopener,noreferrer')
       }

@@ -4,7 +4,7 @@ import { toast } from 'react-toastify'
 import SeoMeta from '../components/SeoMeta'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
-import { savePiSdkSession, tryAuthenticateWithPiSdk } from '../lib/piSdk'
+import { authenticateWithPiSdk, savePiSdkSession } from '../lib/piSdk'
 
 export default function RegisterPage() {
   const { lang, t } = useI18n()
@@ -30,7 +30,14 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      const piSession = await tryAuthenticateWithPiSdk()
+      let piSession = null
+      if (typeof window !== 'undefined' && window.Pi?.authenticate) {
+        try {
+          piSession = await authenticateWithPiSdk()
+        } catch (piError) {
+          toast.warn(piError.message || 'Pi wallet belum terhubung, register tetap dilanjutkan tanpa sinkronisasi Pi.')
+        }
+      }
       const created = await api.createUser({
         name: form.name.trim(),
         email: form.email.trim(),
