@@ -421,6 +421,82 @@ export async function userRoutes(app) {
   )
 
   app.get(
+    '/pi-wallets',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Admin list: user Pi wallet link status',
+      },
+    },
+    async (request) => {
+      const page = Math.max(Number(request.query?.page || 1), 1)
+      const limit = Math.min(Math.max(Number(request.query?.limit || 20), 1), 100)
+      const offset = (page - 1) * limit
+      const status = String(request.query?.status || 'all').toLowerCase()
+      const searchRaw = String(request.query?.search || '').trim()
+      const search = searchRaw ? `%${searchRaw}%` : null
+
+      const conditions = []
+      const params = []
+
+      if (status === 'linked') {
+        conditions.push('upw.user_id IS NOT NULL')
+      } else if (status === 'unlinked') {
+        conditions.push('upw.user_id IS NULL')
+      }
+
+      if (search) {
+        conditions.push('(u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? OR upw.pi_uid LIKE ? OR upw.wallet_address LIKE ?)')
+        params.push(search, search, search, search, search)
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+      const [countRows] = await app.mysql.query(
+        `SELECT COUNT(*) AS total
+         FROM users u
+         LEFT JOIN user_pi_wallets upw ON upw.user_id = u.id
+         ${whereClause}`,
+        params,
+      )
+
+      const [rows] = await app.mysql.query(
+        `SELECT
+           u.id,
+           u.name,
+           u.email,
+           u.phone,
+           u.status,
+           u.pi_balance,
+           upw.pi_uid AS piUid,
+           upw.pi_username AS piUsername,
+           upw.wallet_address AS walletAddress,
+           upw.wallet_secret_id AS walletSecretId,
+           upw.last_pi_balance AS lastPiBalance,
+           upw.last_synced_at AS lastSyncedAt,
+           upw.updated_at AS walletUpdatedAt
+         FROM users u
+         LEFT JOIN user_pi_wallets upw ON upw.user_id = u.id
+         ${whereClause}
+         ORDER BY u.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
+      )
+
+      const items = rows.map((item) => ({
+        ...item,
+        isLinked: Boolean(item.piUid),
+      }))
+
+      return {
+        page,
+        limit,
+        total: Number(countRows[0]?.total || 0),
+        items,
+      }
+    },
+  )
+
+  app.get(
     '/:id',
     {
       schema: {

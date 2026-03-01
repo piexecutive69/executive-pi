@@ -139,6 +139,12 @@ export const api = {
     })
   },
 
+  listAdminPiWallets({ page = 1, limit = 20, status = 'all', search = '' } = {}) {
+    return request('/api/users/pi-wallets', {
+      query: { page, limit, status, search },
+    })
+  },
+
   createUser({ name, email, phone, password, piAuth = null }) {
     return request('/api/users', {
       method: 'POST',
