@@ -156,7 +156,9 @@ export async function digiflazzRoutes(app) {
       const [postpaidBrands] = await app.mysql.query(
         `SELECT brand AS facet, COUNT(*) AS total, MIN(admin_base_idr) AS min_price
          FROM digiflazz_postpaid_products
-         WHERE buyer_product_status = 1 AND seller_product_status = 1
+         WHERE buyer_product_status = 1
+           AND seller_product_status = 1
+           AND UPPER(TRIM(brand)) <> 'BPJS KETENAGAKERJAAN'
          GROUP BY brand
          ORDER BY brand ASC`,
       )

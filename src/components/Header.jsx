@@ -9,7 +9,14 @@ export default function Header({ onOpenDrawer, searchQuery, onSearchChange, cart
   return (
     <header className="sticky top-0 z-10 -mx-4 border-b border-[#6e8dc8]/20 bg-[#0a142d] px-4 py-3">
       <div className="flex items-center gap-3">
-        <img src="/logo_pi.png" alt={t('appName')} className="h-[44px] w-auto" />
+        <img
+          src="/logo_pi.png"
+          alt={t('appName')}
+          className="h-[44px] w-auto"
+          onError={(e) => {
+            e.currentTarget.src = '/assets/img/logo.png'
+          }}
+        />
         <label className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#6e8dc8]/25 bg-[#101d3f] px-4">
           <Search className="h-4 w-4 text-[#c4d3f2]" strokeWidth={2.25} />
           <input

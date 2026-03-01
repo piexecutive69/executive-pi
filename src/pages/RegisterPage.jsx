@@ -4,6 +4,7 @@ import { toast } from 'react-toastify'
 import SeoMeta from '../components/SeoMeta'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { savePiSdkSession, tryAuthenticateWithPiSdk } from '../lib/piSdk'
 
 export default function RegisterPage() {
   const { lang, t } = useI18n()
@@ -29,12 +30,33 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      await api.createUser({
+      const piSession = await tryAuthenticateWithPiSdk()
+      const created = await api.createUser({
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
         password: form.password,
+        piAuth: piSession
+          ? {
+              uid: piSession.uid,
+              username: piSession.username,
+              accessToken: piSession.accessToken,
+              walletAddress: piSession.walletAddress,
+              piBalance: piSession.piBalance,
+            }
+          : null,
       })
+      if (piSession) {
+        savePiSdkSession({
+          uid: piSession.uid,
+          username: created?.pi_auth?.username || piSession.username || null,
+          walletAddress: created?.pi_auth?.walletAddress || piSession.walletAddress || null,
+          walletSecretId: created?.pi_auth?.walletSecretId || null,
+          piBalance: Number(created?.pi_auth?.piBalance || created?.pi_balance || piSession.piBalance || 0),
+          accessToken: piSession.accessToken || null,
+          authenticatedAt: Date.now(),
+        })
+      }
       toast.success(t('registerSuccess'))
       navigate('/login', { replace: true, state: { registeredPhone: form.phone.trim() } })
     } catch (err) {

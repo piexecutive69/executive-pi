@@ -1,28 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bell, CircleHelp, FileText, Settings, ShieldCheck, ShoppingBag, UserRound } from 'lucide-react'
 import { api, toApiAssetUrl } from '../lib/api'
 import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import { useI18n } from '../lib/i18n'
+import { profileMenus } from '../constants/profileMenus'
+import { getPiSdkSession, savePiSdkSession } from '../lib/piSdk'
 
-const profileMenus = [
-  { key: 'orders', idLabel: 'Pesanan Saya', enLabel: 'My Orders', icon: ShoppingBag },
-  { key: 'wishlist', idLabel: 'Wishlist', enLabel: 'Wishlist', icon: UserRound },
-  { key: 'notifications', idLabel: 'Notifikasi', enLabel: 'Notifications', icon: Bell },
-  { key: 'settings', idLabel: 'Pengaturan', enLabel: 'Settings', icon: Settings },
-  { key: 'privacy', idLabel: 'Kebijakan Privasi', enLabel: 'Privacy Policy', icon: ShieldCheck },
-  { key: 'terms', idLabel: 'Syarat & Ketentuan', enLabel: 'Terms & Conditions', icon: FileText },
-  { key: 'help', idLabel: 'Pusat Bantuan', enLabel: 'Help Center', icon: CircleHelp },
-]
-
-export default function ProfilePage({ user, onLogout }) {
+export default function ProfilePage({ user, onLogout, onUserUpdated }) {
   const { lang } = useI18n()
   const navigate = useNavigate()
   const userId = user?.id || null
   const [wallet, setWallet] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [piSession, setPiSession] = useState(() => (user?.pi_auth ? user.pi_auth : getPiSdkSession()))
 
   async function loadProfileSupportData() {
     if (!userId) return
@@ -42,6 +34,55 @@ export default function ProfilePage({ user, onLogout }) {
     loadProfileSupportData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
+
+  useEffect(() => {
+    setPiSession(user?.pi_auth || getPiSdkSession())
+  }, [user?.pi_auth])
+
+  useEffect(() => {
+    let active = true
+    async function syncPiBalance() {
+      const session = getPiSdkSession()
+      if (!userId || !session?.accessToken) return
+      try {
+        const synced = await api.syncPiBalance(userId, {
+          accessToken: session.accessToken,
+          uid: session.uid || null,
+          username: session.username || null,
+          walletAddress: session.walletAddress || null,
+        })
+        if (!active) return
+        const nextPiSession = {
+          ...session,
+          username: synced?.pi_auth?.username || session.username || null,
+          walletAddress: synced?.pi_auth?.walletAddress || session.walletAddress || null,
+          piBalance: Number(synced?.pi_auth?.piBalance ?? synced?.pi_balance ?? session.piBalance ?? 0),
+          authenticatedAt: Date.now(),
+        }
+        savePiSdkSession(nextPiSession)
+        setPiSession(nextPiSession)
+        onUserUpdated?.((prev) =>
+          prev && Number(prev.id) === Number(synced?.id)
+            ? { ...prev, ...synced, pi_auth: synced?.pi_auth || nextPiSession }
+            : prev,
+        )
+        setWallet((prev) => ({
+          ...(prev || {}),
+          idr_balance: synced?.idr_balance ?? prev?.idr_balance ?? 0,
+          pi_balance: synced?.pi_balance ?? nextPiSession.piBalance,
+        }))
+      } catch {
+        // ignore background sync error to avoid breaking profile UI
+      }
+    }
+
+    syncPiBalance()
+    return () => {
+      active = false
+    }
+  }, [onUserUpdated, userId])
+
+  const shownPiBalance = Number(piSession?.piBalance || wallet?.pi_balance || 0)
 
   const displayUser = useMemo(
     () => ({
@@ -93,7 +134,7 @@ export default function ProfilePage({ user, onLogout }) {
           </div>
           <div className="rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-2 py-2 text-center">
             <p className="text-[11px] text-[#8ea6d7]">{lang === 'en' ? 'Pi Balance' : 'Saldo Pi'}</p>
-            <p className="mt-1 text-[12px] font-medium text-[#74b8ff]">{formatPi(wallet?.pi_balance)}</p>
+            <p className="mt-1 text-[12px] font-medium text-[#74b8ff]">{formatPi(shownPiBalance)}</p>
           </div>
           <button
             type="button"
@@ -103,6 +144,13 @@ export default function ProfilePage({ user, onLogout }) {
             <p className="text-[11px] text-[#9fb4df]">{lang === 'en' ? 'Top Up' : 'Topup'}</p>
             <p className="mt-1 text-[12px] font-medium text-[#e3ebfb]">{lang === 'en' ? 'Add Balance' : 'Isi Saldo'}</p>
           </button>
+        </div>
+      ) : null}
+
+      {userId && piSession?.walletAddress ? (
+        <div className="mt-3 rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3">
+          <p className="text-[11px] text-[#8ea6d7]">Pi Wallet</p>
+          <p className="mt-1 break-all text-[12px] text-[#c4d3f2]">{piSession.walletAddress}</p>
         </div>
       ) : null}
 

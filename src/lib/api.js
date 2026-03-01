@@ -118,17 +118,31 @@ export const api = {
     })
   },
 
-  loginByPhone({ phone, password }) {
+  loginByPhone({ phone, password, piAuth = null }) {
     return request('/api/users/login', {
       method: 'POST',
-      body: { phone, password },
+      body: { phone, password, piAuth },
     })
   },
 
-  createUser({ name, email, phone, password }) {
+  loginWithPiSdk({ uid, username = null, accessToken = null, walletAddress = null, piBalance = null }) {
+    return request('/api/users/pi-auth', {
+      method: 'POST',
+      body: { uid, username, accessToken, walletAddress, piBalance },
+    })
+  },
+
+  syncPiBalance(userId = DEFAULT_USER_ID, { accessToken, uid = null, username = null, walletAddress = null, walletSecretId = null }) {
+    return request(`/api/users/${userId}/pi-balance/sync`, {
+      method: 'POST',
+      body: { accessToken, uid, username, walletAddress, walletSecretId },
+    })
+  },
+
+  createUser({ name, email, phone, password, piAuth = null }) {
     return request('/api/users', {
       method: 'POST',
-      body: { name, email, phone, password },
+      body: { name, email, phone, password, piAuth },
     })
   },
 

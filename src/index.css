@@ -3,10 +3,36 @@
 
 :root {
   font-family: "Roboto", sans-serif;
+  --app-bottom-nav-offset: 8px;
+  --app-bottom-nav-safe: env(safe-area-inset-bottom, 0px);
+  --android-nav-inset: 0px;
+  --app-bottom-nav-height: 90px;
+  --app-bottom-nav-total-offset: calc(var(--app-bottom-nav-offset) + var(--app-bottom-nav-safe));
+}
+
+html[data-pi-browser="true"] {
+  --app-bottom-nav-offset: 84px;
+}
+
+html[data-android="true"] {
+  --app-bottom-nav-offset: calc(56px + var(--android-nav-inset));
+}
+
+html[data-pi-browser="true"][data-android="true"] {
+  --app-bottom-nav-offset: calc(68px + var(--android-nav-inset));
 }
 
 body {
   margin: 0;
+}
+
+.pi-bottom-nav {
+  bottom: var(--app-bottom-nav-total-offset);
+  padding-bottom: max(0px, var(--app-bottom-nav-safe));
+}
+
+.pi-main-with-bottom-nav {
+  padding-bottom: calc(var(--app-bottom-nav-height) + var(--app-bottom-nav-total-offset));
 }
 
 .pi-browser-frame {

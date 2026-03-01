@@ -5,8 +5,9 @@ import BottomNav from './components/BottomNav'
 import Drawer from './components/Drawer'
 import Header from './components/Header'
 import ScrollToTop from './components/ScrollToTop'
-import { categories as categorySeed, drawerMenus, heroSlides } from './data/storeData'
+import { categories as categorySeed, heroSlides } from './data/storeData'
 import { api } from './lib/api'
+import { clearPiSdkSession, getPiSdkSession } from './lib/piSdk'
 import { listWishlist, toggleWishlist as toggleWishlistItem } from './lib/wishlist'
 import CartPage from './pages/CartPage'
 import HomePage from './pages/HomePage'
@@ -54,7 +55,8 @@ export default function App() {
         ])
         if (!active) return
         setProducts(productRes.items || [])
-        setUser(userRes)
+        const piSession = getPiSdkSession()
+        setUser(userRes ? { ...userRes, pi_auth: piSession || userRes.pi_auth || null } : null)
       } catch (err) {
         if (!active) return
         setError(err.message || 'Gagal memuat data backend.')
@@ -82,6 +84,7 @@ export default function App() {
     setWishlistItems([])
     setCartCount(0)
     window.localStorage.removeItem(SESSION_USER_ID_KEY)
+    clearPiSdkSession()
   }
 
   useEffect(() => {
@@ -155,7 +158,7 @@ export default function App() {
           cartCount={cartCount}
         />
 
-        <main className="mt-4">
+        <main className={`mt-4 ${showBottomNav ? 'pi-main-with-bottom-nav' : ''}`}>
           {error ? <div className="mb-3 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-[12px] text-red-100">{error}</div> : null}
           <Routes>
             <Route
@@ -179,7 +182,7 @@ export default function App() {
               path="/cart"
               element={<CartPage userId={user?.id || null} onRefreshUser={setUser} onCartChanged={refreshCartCount} />}
             />
-            <Route path="/profile" element={<ProfilePage user={user} onLogout={onLogout} />} />
+            <Route path="/profile" element={<ProfilePage user={user} onLogout={onLogout} onUserUpdated={setUser} />} />
             <Route
               path="/profile/:menuKey"
               element={
@@ -212,7 +215,7 @@ export default function App() {
         </main>
 
         {showBottomNav ? <BottomNav /> : null}
-        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} menus={drawerMenus} />
+        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} user={user} onLogout={onLogout} />
         <ToastContainer
           position="top-center"
           autoClose={2500}

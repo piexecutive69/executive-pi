@@ -22,6 +22,139 @@ export async function userRoutes(app) {
     return parsed || null
   }
 
+  function makePiIdentity(uid) {
+    const safeUid = String(uid || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
+    const shortUid = safeUid.slice(0, 28) || randomUUID().replace(/-/g, '').slice(0, 16)
+    return {
+      email: `pi_${shortUid}@pi.local`,
+      phone: `pi${shortUid}`.slice(0, 40),
+      shortUid,
+    }
+  }
+
+  async function fetchPiMe(accessToken) {
+    const token = toNullableString(accessToken)
+    if (!token) return null
+    try {
+      const meRes = await fetch('https://api.minepi.com/v2/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (!meRes.ok) return null
+      return await meRes.json().catch(() => null)
+    } catch {
+      return null
+    }
+  }
+
+  await app.mysql.query(
+    `CREATE TABLE IF NOT EXISTS user_pi_wallets (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      pi_uid VARCHAR(120) NOT NULL,
+      pi_username VARCHAR(120) NULL,
+      wallet_address VARCHAR(255) NULL,
+      wallet_secret_id VARCHAR(190) NULL,
+      last_pi_balance DECIMAL(18,8) NOT NULL DEFAULT 0,
+      last_synced_at TIMESTAMP NULL,
+      metadata_json JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_user_pi_wallet_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY uq_user_pi_wallet_user (user_id),
+      UNIQUE KEY uq_user_pi_wallet_uid (pi_uid)
+    )`,
+  )
+
+  async function syncPiWalletForUser({ userId, piAuthPayload = {}, fallbackName = null }) {
+    const inputUid = toNullableString(piAuthPayload?.uid)
+    const inputUsername = toNullableString(piAuthPayload?.username)
+    const accessToken = toNullableString(piAuthPayload?.accessToken)
+    const inputWalletAddress = toNullableString(piAuthPayload?.walletAddress)
+    const inputWalletSecretId = toNullableString(piAuthPayload?.walletSecretId)
+    const inputPiBalance = Number(piAuthPayload?.piBalance ?? 0)
+
+    if (!inputUid && !accessToken) return null
+
+    const piMe = await fetchPiMe(accessToken)
+    const finalUid = inputUid || toNullableString(piMe?.uid)
+    if (!finalUid) return null
+
+    const finalUsername =
+      inputUsername ||
+      toNullableString(piMe?.username) ||
+      fallbackName ||
+      null
+    const finalWalletAddress =
+      inputWalletAddress ||
+      toNullableString(piMe?.wallet_address) ||
+      toNullableString(piMe?.walletAddress)
+    const finalPiBalanceRaw =
+      piMe?.balance ??
+      piMe?.pi_balance ??
+      piMe?.piBalance ??
+      inputPiBalance
+    const finalPiBalance = Number.isFinite(Number(finalPiBalanceRaw)) ? Math.max(0, Number(finalPiBalanceRaw)) : 0
+
+    await app.mysql.query(
+      `INSERT INTO user_pi_wallets
+         (user_id, pi_uid, pi_username, wallet_address, wallet_secret_id, last_pi_balance, last_synced_at, metadata_json)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+       ON DUPLICATE KEY UPDATE
+         user_id = VALUES(user_id),
+         pi_uid = VALUES(pi_uid),
+         pi_username = VALUES(pi_username),
+         wallet_address = VALUES(wallet_address),
+         wallet_secret_id = VALUES(wallet_secret_id),
+         last_pi_balance = VALUES(last_pi_balance),
+         last_synced_at = NOW(),
+         metadata_json = VALUES(metadata_json)`,
+      [
+        userId,
+        finalUid,
+        finalUsername,
+        finalWalletAddress,
+        inputWalletSecretId,
+        finalPiBalance,
+        JSON.stringify({
+          piMe: piMe || null,
+        }),
+      ],
+    )
+
+    await app.mysql.query(
+      `UPDATE users
+       SET pi_balance = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [finalPiBalance, userId],
+    )
+
+    return {
+      uid: finalUid,
+      username: finalUsername,
+      walletAddress: finalWalletAddress,
+      walletSecretId: inputWalletSecretId,
+      piBalance: finalPiBalance,
+    }
+  }
+
+  async function getPiWalletByUserId(userId) {
+    const [rows] = await app.mysql.query(
+      `SELECT pi_uid AS uid,
+              pi_username AS username,
+              wallet_address AS walletAddress,
+              wallet_secret_id AS walletSecretId,
+              last_pi_balance AS piBalance,
+              last_synced_at AS lastSyncedAt
+       FROM user_pi_wallets
+       WHERE user_id = ?
+       LIMIT 1`,
+      [userId],
+    )
+    return rows[0] || null
+  }
+
   app.post(
     '/login',
     {
@@ -34,6 +167,17 @@ export async function userRoutes(app) {
           properties: {
             phone: { type: 'string' },
             password: { type: 'string' },
+            piAuth: {
+              type: ['object', 'null'],
+              properties: {
+                uid: { type: ['string', 'null'] },
+                username: { type: ['string', 'null'] },
+                accessToken: { type: ['string', 'null'] },
+                walletAddress: { type: ['string', 'null'] },
+                walletSecretId: { type: ['string', 'null'] },
+                piBalance: { type: ['number', 'null'] },
+              },
+            },
           },
         },
         response: {
@@ -76,7 +220,203 @@ export async function userRoutes(app) {
         return reply.code(401).send({ message: 'Invalid phone or password' })
       }
 
-      return rows[0]
+      const user = rows[0]
+      const piAuthPayload = request.body?.piAuth || null
+      if (piAuthPayload && (piAuthPayload.uid || piAuthPayload.accessToken)) {
+        const synced = await syncPiWalletForUser({
+          userId: Number(user.id),
+          piAuthPayload,
+          fallbackName: user.name,
+        })
+        const refreshed = await getUserById(Number(user.id))
+        return {
+          ...refreshed,
+          pi_auth: synced,
+        }
+      }
+
+      const existingPi = await getPiWalletByUserId(Number(user.id))
+      return {
+        ...user,
+        pi_auth: existingPi,
+      }
+    },
+  )
+
+  app.post(
+    '/pi-auth',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Login/register via Pi SDK identity',
+        body: {
+          type: 'object',
+          required: ['uid'],
+          properties: {
+            uid: { type: 'string' },
+            username: { type: ['string', 'null'] },
+            accessToken: { type: ['string', 'null'] },
+            walletAddress: { type: ['string', 'null'] },
+            piBalance: { type: ['number', 'null'] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const uid = String(request.body?.uid || '').trim()
+      const username = toNullableString(request.body?.username)
+      const accessToken = toNullableString(request.body?.accessToken)
+      const walletAddressInput = toNullableString(request.body?.walletAddress)
+
+      if (!uid) {
+        return reply.code(400).send({ message: 'uid is required' })
+      }
+
+      const piMe = await fetchPiMe(accessToken)
+
+      const { email, phone, shortUid } = makePiIdentity(uid)
+      const fallbackName = `Pi User ${shortUid}`
+      const nextName = username || toNullableString(piMe?.username) || fallbackName
+      const incomingPiBalance = Number(
+        request.body?.piBalance ??
+          piMe?.balance ??
+          piMe?.pi_balance ??
+          piMe?.piBalance ??
+          0,
+      )
+      const normalizedPiBalance = Number.isFinite(incomingPiBalance) ? Math.max(0, incomingPiBalance) : 0
+      const walletAddress =
+        walletAddressInput ||
+        toNullableString(piMe?.wallet_address) ||
+        toNullableString(piMe?.walletAddress)
+      const walletSecretId = toNullableString(request.body?.walletSecretId)
+
+      const [rows] = await app.mysql.query(
+        `SELECT id
+         FROM users
+         WHERE email = ?
+         LIMIT 1`,
+        [email],
+      )
+
+      let userId = null
+      if (rows.length) {
+        userId = Number(rows[0].id)
+        await app.mysql.query(
+          `UPDATE users
+           SET name = ?, pi_balance = GREATEST(pi_balance, ?), updated_at = NOW()
+           WHERE id = ?`,
+          [nextName, normalizedPiBalance, userId],
+        )
+      } else {
+        const seedPassword = randomUUID()
+        const [insertRes] = await app.mysql.query(
+          `INSERT INTO users (name, email, phone, password_hash, idr_balance, pi_balance, status)
+           VALUES (?, ?, ?, SHA2(?, 256), 0, ?, 'active')`,
+          [nextName, email, phone, seedPassword, normalizedPiBalance],
+        )
+        userId = Number(insertRes.insertId)
+      }
+
+      const syncedWallet = await syncPiWalletForUser({
+        userId,
+        piAuthPayload: {
+          uid,
+          username: nextName,
+          accessToken,
+          walletAddress,
+          walletSecretId,
+          piBalance: normalizedPiBalance,
+        },
+        fallbackName: nextName,
+      })
+      const user = await getUserById(userId)
+      return {
+        ...user,
+        pi_auth: syncedWallet || {
+          uid,
+          username: nextName,
+          walletAddress,
+          walletSecretId,
+          piBalance: normalizedPiBalance,
+        },
+      }
+    },
+  )
+
+  app.post(
+    '/:id/pi-balance/sync',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Sync Pi balance from Pi access token',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'integer' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['accessToken'],
+          properties: {
+            accessToken: { type: 'string' },
+            uid: { type: ['string', 'null'] },
+            username: { type: ['string', 'null'] },
+            walletAddress: { type: ['string', 'null'] },
+            walletSecretId: { type: ['string', 'null'] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = Number(request.params.id)
+      if (!userId) {
+        return reply.code(400).send({ message: 'Invalid user id' })
+      }
+
+      const accessToken = toNullableString(request.body?.accessToken)
+      const expectedUid = toNullableString(request.body?.uid)
+      const fallbackUsername = toNullableString(request.body?.username)
+      const fallbackWalletAddress = toNullableString(request.body?.walletAddress)
+      const fallbackWalletSecretId = toNullableString(request.body?.walletSecretId)
+      if (!accessToken) {
+        return reply.code(400).send({ message: 'accessToken is required' })
+      }
+
+      const user = await getUserById(userId)
+      if (!user) {
+        return reply.code(404).send({ message: 'User not found' })
+      }
+
+      const piMe = await fetchPiMe(accessToken)
+      if (!piMe) {
+        return reply.code(401).send({ message: 'Failed to validate access token with Pi API' })
+      }
+
+      const meUid = toNullableString(piMe?.uid)
+      if (expectedUid && meUid && expectedUid !== meUid) {
+        return reply.code(401).send({ message: 'Pi uid does not match current session' })
+      }
+
+      const syncedWallet = await syncPiWalletForUser({
+        userId,
+        piAuthPayload: {
+          uid: expectedUid || meUid,
+          username: fallbackUsername || toNullableString(piMe?.username),
+          accessToken,
+          walletAddress: fallbackWalletAddress,
+          walletSecretId: fallbackWalletSecretId,
+          piBalance: Number(piMe?.balance ?? piMe?.pi_balance ?? piMe?.piBalance ?? user.pi_balance ?? 0),
+        },
+        fallbackName: user.name,
+      })
+      const refreshed = await getUserById(userId)
+      return {
+        ...refreshed,
+        pi_auth: syncedWallet,
+      }
     },
   )
 
@@ -535,14 +875,25 @@ export async function userRoutes(app) {
           properties: {
             name: { type: 'string' },
             email: { type: 'string' },
-              phone: { type: 'string' },
-              password: { type: 'string', minLength: 6 },
+            phone: { type: 'string' },
+            password: { type: 'string', minLength: 6 },
+            piAuth: {
+              type: ['object', 'null'],
+              properties: {
+                uid: { type: ['string', 'null'] },
+                username: { type: ['string', 'null'] },
+                accessToken: { type: ['string', 'null'] },
+                walletAddress: { type: ['string', 'null'] },
+                walletSecretId: { type: ['string', 'null'] },
+                piBalance: { type: ['number', 'null'] },
+              },
+            },
           },
         },
       },
     },
     async (request, reply) => {
-      const { name, email, phone, password } = request.body || {}
+      const { name, email, phone, password, piAuth } = request.body || {}
       if (!name || !email || !phone || !password) {
         return reply.code(400).send({ message: 'name, email, phone, password are required' })
       }
@@ -558,15 +909,19 @@ export async function userRoutes(app) {
         [name, email, phone, password],
       )
 
+      const piWallet = piAuth
+        ? await syncPiWalletForUser({
+            userId: Number(result.insertId),
+            piAuthPayload: piAuth,
+            fallbackName: String(name),
+          })
+        : null
+
+      const createdUser = await getUserById(Number(result.insertId))
+
       return reply.code(201).send({
-        id: result.insertId,
-        name,
-        email,
-        phone,
-        profile_image_url: null,
-        idr_balance: 0,
-        pi_balance: 0,
-        status: 'active',
+        ...createdUser,
+        pi_auth: piWallet,
       })
     },
   )

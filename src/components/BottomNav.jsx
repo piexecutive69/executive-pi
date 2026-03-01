@@ -12,7 +12,7 @@ export default function BottomNav() {
   ]
 
   return (
-    <nav className="fixed bottom-2 left-1/2 z-20 flex w-[calc(100%-12px)] -translate-x-1/2 justify-between rounded-[34px] border border-[#6e8dc8]/20 bg-[#0b1632]/95 px-4 py-2 shadow-[0_8px_24px_rgba(0,0,0,.32)] md:max-w-[376px]">
+    <nav className="pi-bottom-nav fixed left-1/2 z-20 flex w-[calc(100%-12px)] -translate-x-1/2 justify-between rounded-[34px] border border-[#6e8dc8]/20 bg-[#0b1632]/95 px-4 py-2 shadow-[0_8px_24px_rgba(0,0,0,.32)] md:max-w-[376px]">
       {menus.map((menu) => (
         <NavLink
           key={menu.label}

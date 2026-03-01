@@ -23,6 +23,15 @@ function getPostpaidIcon(label) {
   return Building2
 }
 
+function formatFacetLabel(label, type) {
+  const raw = String(label || '').trim()
+  if (!raw) return raw
+  if (type === 'pascabayar') {
+    return raw.replace(/\s*PASCABAYAR\s*/gi, ' ').replace(/\s{2,}/g, ' ').trim()
+  }
+  return raw
+}
+
 export default function PpobPage({ userId }) {
   const navigate = useNavigate()
   const [facets, setFacets] = useState({ prepaid: [], pascabayar: [] })
@@ -36,7 +45,10 @@ export default function PpobPage({ userId }) {
     setError('')
     try {
       const facetData = await api.listDigiflazzFacets()
-      setFacets({ prepaid: facetData.prepaid || [], pascabayar: facetData.pascabayar || [] })
+      const filteredPascabayar = (facetData.pascabayar || []).filter(
+        (item) => !String(item?.facet || '').toUpperCase().includes('BPJS KETENAGAKERJAAN'),
+      )
+      setFacets({ prepaid: facetData.prepaid || [], pascabayar: filteredPascabayar })
     } catch (err) {
       setError(err.message || 'Gagal memuat data PPOB.')
     } finally {
@@ -93,10 +105,11 @@ export default function PpobPage({ userId }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {activeTab === 'prepaid'
             ? facets.prepaid.map((item) => {
                 const Icon = getPrepaidIcon(item.facet)
+                const label = formatFacetLabel(item.facet, 'prepaid')
                 return (
                   <button
                     key={`pre-${item.facet}`}
@@ -105,12 +118,13 @@ export default function PpobPage({ userId }) {
                     className="rounded-[12px] border border-[#6e8dc8]/25 bg-[#162a57] px-2 py-3 text-center"
                   >
                     <Icon className="mx-auto h-5 w-5 text-[#9fb4df]" />
-                    <p className="mt-1 text-[11px] font-medium leading-tight text-[#e3ebfb]">{item.facet}</p>
+                    <p className="mt-1 text-[11px] font-medium leading-tight text-[#e3ebfb]">{label}</p>
                   </button>
                 )
               })
             : facets.pascabayar.map((item) => {
                 const Icon = getPostpaidIcon(item.facet)
+                const label = formatFacetLabel(item.facet, 'pascabayar')
                 return (
                   <button
                     key={`post-${item.facet}`}
@@ -119,7 +133,7 @@ export default function PpobPage({ userId }) {
                     className="rounded-[12px] border border-[#6e8dc8]/25 bg-[#162a57] px-2 py-3 text-center"
                   >
                     <Icon className="mx-auto h-5 w-5 text-[#9fb4df]" />
-                    <p className="mt-1 text-[11px] font-medium leading-tight text-[#e3ebfb]">{item.facet}</p>
+                    <p className="mt-1 text-[11px] font-medium leading-tight text-[#e3ebfb]">{label}</p>
                   </button>
                 )
               })}

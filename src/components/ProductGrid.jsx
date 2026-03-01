@@ -33,7 +33,7 @@ export default function ProductGrid({ items, wishlistIdSet = new Set(), onToggle
               className="mx-auto h-full max-h-[100px] w-auto object-contain pt-2"
             />
           </div>
-          <h4 className="mt-2 text-[19px] font-medium leading-tight text-[#e3ebfb]">{item.name}</h4>
+          <h4 className="mt-2 text-[14px] font-medium leading-tight text-[#e3ebfb]">{item.name}</h4>
           <p className="text-[14px] text-[#8ea6d7]">{item.category || item.category_name}</p>
           <div className="mt-1 flex items-center justify-between gap-2">
             <p className="text-[14px] leading-tight font-medium text-[#9fd0ff]">{item.idr || formatIDR(item.price_idr)}</p>
