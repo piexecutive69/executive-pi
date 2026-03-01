@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --bg-main: #07111d;
+  --bg-surface: #0d1c30;
+  --bg-card: #12243b;
+  --line-soft: rgba(151, 181, 214, 0.25);
+  --text-main: #e7f1ff;
+  --text-muted: #90a6bf;
+  --accent: #1fa2a6;
+  --accent-2: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  background:
+    radial-gradient(1000px circle at 5% -10%, rgba(31, 162, 166, 0.18) 0%, transparent 48%),
+    radial-gradient(900px circle at 90% 0%, rgba(37, 99, 235, 0.2) 0%, transparent 42%),
+    linear-gradient(180deg, #06101b 0%, #07111d 45%, #081523 100%);
+  color: var(--text-main);
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.admin-shell {
+  min-height: 100vh;
+}
+
+.soft-card {
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(18, 36, 59, 0.95), rgba(12, 25, 42, 0.95));
+  backdrop-filter: blur(3px);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}

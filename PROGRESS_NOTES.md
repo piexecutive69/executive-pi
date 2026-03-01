@@ -146,3 +146,39 @@ Last update: 2026-03-02 (post-deploy)
 2. Add explicit migration SQL file for `user_pi_wallets` (currently table auto-created in route init).
 3. Add token refresh/expiry handling for Pi access token in frontend local session.
 4. Add admin page/log for Pi wallet link status and last sync health.
+
+---
+
+Last update: 2026-03-02 (admin rebuild - separate app)
+
+### Admin panel architecture (separate from storefront)
+- Storefront frontend remains untouched.
+- New admin app created at `admin-panel/` using:
+  - Vite
+  - React
+  - Tailwind CSS
+- Admin UI provides responsive pages for:
+  - dashboard summary
+  - product control (list + edit)
+  - order control (list + status update + detail)
+  - Pi wallet link monitor
+  - Digiflazz sync console + logs
+
+### Backend admin API added
+- New route group: `GET/ PATCH /api/admin/*`
+- Implemented:
+  - `GET /api/admin/summary`
+  - `GET /api/admin/products`
+  - `PATCH /api/admin/products/:id`
+  - `GET /api/admin/orders`
+  - `GET /api/admin/orders/:id`
+  - `PATCH /api/admin/orders/:id/status`
+  - `GET /api/admin/pi-wallets`
+
+### Local run
+1. Backend: `cd backend && npm run dev`
+2. Admin app:
+   - `cd admin-panel`
+   - `npm install`
+   - `npm run dev`
+3. Open `http://localhost:5174`

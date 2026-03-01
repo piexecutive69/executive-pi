@@ -17,6 +17,7 @@ import { userRoutes } from './routes/users.js'
 import { digiflazzRoutes } from './routes/digiflazz.js'
 import { walletRoutes } from './routes/wallet.js'
 import { wilayahRoutes } from './routes/wilayah.js'
+import { adminRoutes } from './routes/admin.js'
 
 const app = Fastify({
   logger: true,
@@ -24,6 +25,7 @@ const app = Fastify({
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const uploadsRoot = path.resolve(__dirname, '../uploads')
+const publicAssetsRoot = path.resolve(__dirname, '../../public/assets')
 
 await app.register(swagger, {
   openapi: {
@@ -74,6 +76,12 @@ await app.register(multipart, {
 await app.register(fastifyStatic, {
   root: uploadsRoot,
   prefix: '/uploads/',
+  decorateReply: false,
+})
+
+await app.register(fastifyStatic, {
+  root: publicAssetsRoot,
+  prefix: '/assets/',
   decorateReply: false,
 })
 
@@ -133,6 +141,7 @@ await app.register(ppobRoutes, { prefix: '/api/ppob' })
 await app.register(digiflazzRoutes, { prefix: '/api/digiflazz' })
 await app.register(walletRoutes, { prefix: '/api/wallet' })
 await app.register(wilayahRoutes, { prefix: '/api/wilayah' })
+await app.register(adminRoutes, { prefix: '/api/admin' })
 
 const port = Number(process.env.PORT || 3100)
 const host = process.env.HOST || '0.0.0.0'
