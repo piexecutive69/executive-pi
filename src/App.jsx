@@ -225,6 +225,7 @@ export default function App() {
           pauseOnHover
           draggable={false}
           theme="dark"
+          style={{ top: 16, zIndex: 99999 }}
         />
       </div>
     </div>

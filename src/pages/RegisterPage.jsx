@@ -49,17 +49,32 @@ export default function RegisterPage() {
               username: piSession.username,
               accessToken: piSession.accessToken,
               walletAddress: piSession.walletAddress,
+              walletSecretId: piSession.walletSecretId || null,
               piBalance: piSession.piBalance,
             }
           : null,
       })
+      let syncedUser = created
+      if (piSession?.accessToken && created?.id) {
+        try {
+          syncedUser = await api.syncPiBalance(created.id, {
+            accessToken: piSession.accessToken,
+            uid: piSession.uid || null,
+            username: piSession.username || null,
+            walletAddress: piSession.walletAddress || null,
+            walletSecretId: piSession.walletSecretId || null,
+          })
+        } catch {
+          // keep register success even if sync failed
+        }
+      }
       if (piSession) {
         savePiSdkSession({
           uid: piSession.uid,
-          username: created?.pi_auth?.username || piSession.username || null,
-          walletAddress: created?.pi_auth?.walletAddress || piSession.walletAddress || null,
-          walletSecretId: created?.pi_auth?.walletSecretId || null,
-          piBalance: Number(created?.pi_auth?.piBalance || created?.pi_balance || piSession.piBalance || 0),
+          username: syncedUser?.pi_auth?.username || piSession.username || null,
+          walletAddress: syncedUser?.pi_auth?.walletAddress || piSession.walletAddress || null,
+          walletSecretId: syncedUser?.pi_auth?.walletSecretId || piSession.walletSecretId || null,
+          piBalance: Number(syncedUser?.pi_auth?.piBalance || syncedUser?.pi_balance || piSession.piBalance || 0),
           accessToken: piSession.accessToken || null,
           authenticatedAt: Date.now(),
         })

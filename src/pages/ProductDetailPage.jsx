@@ -7,6 +7,7 @@ import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import LoginRequiredCard from '../components/LoginRequiredCard'
 import { useI18n } from '../lib/i18n'
+import { isAddressComplete } from '../lib/address'
 
 const DESCRIPTION_EN_MAP = {
   'Tas kulit premium untuk kebutuhan harian dengan kompartemen utama luas dan material tahan lama.':
@@ -30,6 +31,9 @@ export default function ProductDetailPage({ products, userId, wishlistItems, onT
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [showLoginRequired, setShowLoginRequired] = useState(false)
+  const isAddressRequiredError =
+    actionError.toLowerCase().includes('alamat pengiriman belum diisi') ||
+    actionError.toLowerCase().includes('isi alamat terlebih dahulu')
 
   const product = useMemo(() => {
     const fromList = products.find((p) => String(p.id) === String(productId))
@@ -78,11 +82,25 @@ export default function ProductDetailPage({ products, userId, wishlistItems, onT
     setSubmitting(true)
     setActionError('')
     try {
+      const address = await api.getUserAddress(userId)
+      if (!isAddressComplete(address)) {
+        const msg = 'Isi alamat terlebih dahulu di Profile > Settings.'
+        setActionError('')
+        toast.error(msg)
+        return
+      }
+
       await api.addCartItem({ userId, productId: Number(product.id), qty })
       onCartAdded?.(qty)
       onCartChanged?.(userId)
     } catch (err) {
-      setActionError(err.message || (lang === 'en' ? 'Failed to add cart.' : 'Gagal menambahkan ke keranjang.'))
+      const nextError = err.message || (lang === 'en' ? 'Failed to add cart.' : 'Gagal menambahkan ke keranjang.')
+      if (String(nextError).toLowerCase().includes('alamat')) {
+        setActionError('')
+        toast.error(String(nextError))
+      } else {
+        setActionError(nextError)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -206,7 +224,18 @@ export default function ProductDetailPage({ products, userId, wishlistItems, onT
           <div className="mt-3 rounded-md border border-red-300/20 bg-red-400/10 p-3">
             <div className="flex items-start gap-2">
               <XCircle className="mt-0.5 h-4 w-4 text-red-300" />
-              <p className="text-[12px] text-red-200">{actionError}</p>
+              <div className="flex-1">
+                <p className="text-[12px] text-red-200">{actionError}</p>
+                {isAddressRequiredError ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/profile/settings')}
+                    className="mt-2 rounded-full border border-red-200/40 px-3 py-1 text-[11px] font-medium text-red-100"
+                  >
+                    {lang === 'en' ? 'Fill Address' : 'Isi Alamat'}
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}

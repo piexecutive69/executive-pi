@@ -38,18 +38,34 @@ export default function LoginPage({ onLogin }) {
               username: piSession.username,
               accessToken: piSession.accessToken,
               walletAddress: piSession.walletAddress,
+              walletSecretId: piSession.walletSecretId || null,
               piBalance: piSession.piBalance,
             }
           : null,
       })
-      onLogin?.(user)
+
+      let syncedUser = user
+      if (piSession?.accessToken && user?.id) {
+        try {
+          syncedUser = await api.syncPiBalance(user.id, {
+            accessToken: piSession.accessToken,
+            uid: piSession.uid || null,
+            username: piSession.username || null,
+            walletAddress: piSession.walletAddress || null,
+            walletSecretId: piSession.walletSecretId || null,
+          })
+        } catch {
+          // keep login success even if background sync failed
+        }
+      }
+      onLogin?.(syncedUser)
       if (piSession) {
         savePiSdkSession({
           uid: piSession.uid,
-          username: user?.pi_auth?.username || piSession.username || null,
-          walletAddress: user?.pi_auth?.walletAddress || piSession.walletAddress || null,
-          walletSecretId: user?.pi_auth?.walletSecretId || null,
-          piBalance: Number(user?.pi_auth?.piBalance || user?.pi_balance || piSession.piBalance || 0),
+          username: syncedUser?.pi_auth?.username || piSession.username || null,
+          walletAddress: syncedUser?.pi_auth?.walletAddress || piSession.walletAddress || null,
+          walletSecretId: syncedUser?.pi_auth?.walletSecretId || piSession.walletSecretId || null,
+          piBalance: Number(syncedUser?.pi_auth?.piBalance || syncedUser?.pi_balance || piSession.piBalance || 0),
           accessToken: piSession.accessToken || null,
           authenticatedAt: Date.now(),
         })

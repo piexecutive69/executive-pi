@@ -2,6 +2,22 @@ function toInt(value) {
   return Number(value || 0)
 }
 
+async function hasCompletedShippingAddress(app, userId) {
+  const [rows] = await app.mysql.query(
+    `SELECT user_id
+     FROM user_addresses
+     WHERE user_id = ?
+       AND COALESCE(NULLIF(TRIM(address_line), ''), NULL) IS NOT NULL
+       AND province_id IS NOT NULL
+       AND regency_id IS NOT NULL
+       AND district_id IS NOT NULL
+       AND village_id IS NOT NULL
+     LIMIT 1`,
+    [userId],
+  )
+  return rows.length > 0
+}
+
 export async function cartRoutes(app) {
   app.get(
     '/',
@@ -134,6 +150,13 @@ export async function cartRoutes(app) {
 
     if (!userId || !productId) {
       return reply.code(400).send({ message: 'userId and productId are required' })
+    }
+
+    const hasAddress = await hasCompletedShippingAddress(app, userId)
+    if (!hasAddress) {
+      return reply.code(400).send({
+        message: 'Alamat pengiriman belum diisi. Lengkapi alamat di menu Profile > Settings terlebih dahulu.',
+      })
     }
 
     const [productRows] = await app.mysql.query('SELECT id, stock FROM products WHERE id = ? AND is_active = 1', [productId])

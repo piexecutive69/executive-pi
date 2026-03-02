@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { createWriteStream } from 'node:fs'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { resolvePiContextFromRequest } from '../lib/piContext.js'
 
 export async function userRoutes(app) {
   async function getUserById(userId) {
@@ -48,6 +49,49 @@ export async function userRoutes(app) {
     }
   }
 
+  async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(url, { signal: controller.signal })
+      if (!res.ok) return null
+      return await res.json().catch(() => null)
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async function fetchPiOnChainBalance(walletAddress, preferredNetwork = 'mainnet') {
+    const address = toNullableString(walletAddress)
+    if (!address) return null
+
+    const network = String(preferredNetwork || process.env.PI_CHAIN_NETWORK || 'mainnet').trim().toLowerCase()
+    const primaryHosts =
+      network === 'testnet'
+        ? ['https://api.testnet.minepi.com', 'https://api.testnet.minepi.com/horizon']
+        : ['https://api.mainnet.minepi.com', 'https://api.mainnet.minepi.com/horizon']
+    const fallbackHosts =
+      network === 'testnet'
+        ? ['https://api.mainnet.minepi.com', 'https://api.mainnet.minepi.com/horizon']
+        : ['https://api.testnet.minepi.com', 'https://api.testnet.minepi.com/horizon']
+    const hosts = [...primaryHosts, ...fallbackHosts]
+
+    for (const host of hosts) {
+      const account = await fetchJsonWithTimeout(`${host}/accounts/${encodeURIComponent(address)}`)
+      const balances = Array.isArray(account?.balances) ? account.balances : []
+      const native = balances.find((item) => String(item?.asset_type || '').toLowerCase() === 'native')
+      const candidate = native?.balance ?? account?.balance ?? null
+      const parsed = Number(candidate)
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return parsed
+      }
+    }
+
+    return null
+  }
+
   await app.mysql.query(
     `CREATE TABLE IF NOT EXISTS user_pi_wallets (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -67,34 +111,52 @@ export async function userRoutes(app) {
     )`,
   )
 
-  async function syncPiWalletForUser({ userId, piAuthPayload = {}, fallbackName = null }) {
+  async function syncPiWalletForUser({ userId, piAuthPayload = {}, fallbackName = null, piNetwork = 'mainnet' }) {
     const inputUid = toNullableString(piAuthPayload?.uid)
     const inputUsername = toNullableString(piAuthPayload?.username)
     const accessToken = toNullableString(piAuthPayload?.accessToken)
     const inputWalletAddress = toNullableString(piAuthPayload?.walletAddress)
     const inputWalletSecretId = toNullableString(piAuthPayload?.walletSecretId)
-    const inputPiBalance = Number(piAuthPayload?.piBalance ?? 0)
+    const hasInputPiBalance = piAuthPayload?.piBalance !== undefined && piAuthPayload?.piBalance !== null
+    const inputPiBalance = hasInputPiBalance ? Number(piAuthPayload?.piBalance) : null
 
     if (!inputUid && !accessToken) return null
 
+    const [existingRows] = await app.mysql.query(
+      `SELECT pi_uid, pi_username, wallet_address, wallet_secret_id, last_pi_balance
+       FROM user_pi_wallets
+       WHERE user_id = ?
+       LIMIT 1`,
+      [userId],
+    )
+    const existing = existingRows[0] || null
+
     const piMe = await fetchPiMe(accessToken)
-    const finalUid = inputUid || toNullableString(piMe?.uid)
+    const finalUid = inputUid || toNullableString(piMe?.uid) || toNullableString(existing?.pi_uid)
     if (!finalUid) return null
 
     const finalUsername =
       inputUsername ||
       toNullableString(piMe?.username) ||
+      toNullableString(existing?.pi_username) ||
       fallbackName ||
       null
     const finalWalletAddress =
       inputWalletAddress ||
       toNullableString(piMe?.wallet_address) ||
-      toNullableString(piMe?.walletAddress)
+      toNullableString(piMe?.walletAddress) ||
+      toNullableString(existing?.wallet_address)
+    const finalWalletSecretId =
+      inputWalletSecretId ||
+      toNullableString(existing?.wallet_secret_id) ||
+      `pi_uid:${finalUid}`
+    const onChainPiBalance = finalWalletAddress ? await fetchPiOnChainBalance(finalWalletAddress, piNetwork) : null
     const finalPiBalanceRaw =
+      onChainPiBalance ??
       piMe?.balance ??
       piMe?.pi_balance ??
       piMe?.piBalance ??
-      inputPiBalance
+      (hasInputPiBalance ? inputPiBalance : existing?.last_pi_balance)
     const finalPiBalance = Number.isFinite(Number(finalPiBalanceRaw)) ? Math.max(0, Number(finalPiBalanceRaw)) : 0
 
     await app.mysql.query(
@@ -115,10 +177,24 @@ export async function userRoutes(app) {
         finalUid,
         finalUsername,
         finalWalletAddress,
-        inputWalletSecretId,
+        finalWalletSecretId,
         finalPiBalance,
         JSON.stringify({
           piMe: piMe || null,
+          source: {
+            uid: inputUid ? 'client' : piMe?.uid ? 'pi_me' : existing?.pi_uid ? 'db' : null,
+            walletAddress: inputWalletAddress ? 'client' : piMe?.wallet_address || piMe?.walletAddress ? 'pi_me' : existing?.wallet_address ? 'db' : null,
+            piBalance:
+              onChainPiBalance !== null
+                ? 'pi_chain'
+                : piMe?.balance !== undefined || piMe?.pi_balance !== undefined || piMe?.piBalance !== undefined
+                  ? 'pi_me'
+                  : hasInputPiBalance
+                    ? 'client'
+                    : existing?.last_pi_balance !== undefined
+                      ? 'db'
+                      : null,
+          },
         }),
       ],
     )
@@ -134,7 +210,7 @@ export async function userRoutes(app) {
       uid: finalUid,
       username: finalUsername,
       walletAddress: finalWalletAddress,
-      walletSecretId: inputWalletSecretId,
+      walletSecretId: finalWalletSecretId,
       piBalance: finalPiBalance,
     }
   }
@@ -202,6 +278,7 @@ export async function userRoutes(app) {
       },
     },
     async (request, reply) => {
+      const piContext = resolvePiContextFromRequest(request)
       const phone = String(request.body?.phone || '').trim()
       const password = String(request.body?.password || '')
       if (!phone || !password) {
@@ -227,6 +304,7 @@ export async function userRoutes(app) {
           userId: Number(user.id),
           piAuthPayload,
           fallbackName: user.name,
+          piNetwork: piContext.network,
         })
         const refreshed = await getUserById(Number(user.id))
         return {
@@ -263,6 +341,7 @@ export async function userRoutes(app) {
       },
     },
     async (request, reply) => {
+      const piContext = resolvePiContextFromRequest(request)
       const uid = String(request.body?.uid || '').trim()
       const username = toNullableString(request.body?.username)
       const accessToken = toNullableString(request.body?.accessToken)
@@ -329,6 +408,7 @@ export async function userRoutes(app) {
           piBalance: normalizedPiBalance,
         },
         fallbackName: nextName,
+        piNetwork: piContext.network,
       })
       const user = await getUserById(userId)
       return {
@@ -371,6 +451,7 @@ export async function userRoutes(app) {
       },
     },
     async (request, reply) => {
+      const piContext = resolvePiContextFromRequest(request)
       const userId = Number(request.params.id)
       if (!userId) {
         return reply.code(400).send({ message: 'Invalid user id' })
@@ -411,6 +492,7 @@ export async function userRoutes(app) {
           piBalance: Number(piMe?.balance ?? piMe?.pi_balance ?? piMe?.piBalance ?? user.pi_balance ?? 0),
         },
         fallbackName: user.name,
+        piNetwork: piContext.network,
       })
       const refreshed = await getUserById(userId)
       return {

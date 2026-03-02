@@ -35,12 +35,13 @@ function toQueryString(query = {}) {
   return qs ? `?${qs}` : ''
 }
 
-async function request(path, { method = 'GET', query, body } = {}) {
+async function request(path, { method = 'GET', query, body, headers: extraHeaders } = {}) {
   const url = `${API_BASE_URL}${path}${toQueryString(query)}`
   const hasBody = body !== undefined && body !== null
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const headers = {
     'x-api-key': API_KEY,
+    ...(extraHeaders || {}),
   }
   if (!isFormData && hasBody) {
     headers['Content-Type'] = 'application/json'
@@ -194,6 +195,38 @@ export const api = {
 
   listOrders(userId = DEFAULT_USER_ID) {
     return request('/api/orders', { query: { userId } })
+  },
+
+  initiatePiOrderPayment({ userId = DEFAULT_USER_ID, shippingAddress = 'Alamat belum diisi', shippingIdr = 12000, idempotencyKey = null }) {
+    return request('/api/orders/pi/initiate', {
+      method: 'POST',
+      body: { userId, shippingAddress, shippingIdr, idempotencyKey },
+      headers: idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : undefined,
+    })
+  },
+
+  approvePiOrderPayment({ orderId, paymentId, idempotencyKey = null }) {
+    return request('/api/orders/pi/approve', {
+      method: 'POST',
+      body: { orderId, paymentId, idempotencyKey },
+      headers: idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : undefined,
+    })
+  },
+
+  completePiOrderPayment({ orderId, paymentId, txid = null, idempotencyKey = null }) {
+    return request('/api/orders/pi/complete', {
+      method: 'POST',
+      body: { orderId, paymentId, txid, idempotencyKey },
+      headers: idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : undefined,
+    })
+  },
+
+  cancelPiOrderPayment({ orderId, paymentId = null, reason = 'cancelled by user', idempotencyKey = null }) {
+    return request('/api/orders/pi/cancel', {
+      method: 'POST',
+      body: { orderId, paymentId, reason, idempotencyKey },
+      headers: idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : undefined,
+    })
   },
 
   getWalletBalance(userId = DEFAULT_USER_ID) {

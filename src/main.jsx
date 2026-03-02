@@ -48,12 +48,21 @@ function configurePiBrowserUi() {
   }
 }
 
-function bootPiSdkTestnet() {
+function resolvePiSandboxMode() {
+  if (typeof window === 'undefined') return false
+  const host = String(window.location?.hostname || '').toLowerCase()
+  if (host === 'store.pi-executive.com') return true
+  if (host === 'mall.pi-executive.com') return false
+  return false
+}
+
+function bootPiSdk() {
   if (typeof window === 'undefined') return
+  const sandbox = resolvePiSandboxMode()
 
   const tryInit = () => {
     if (window.Pi?.init) {
-      window.Pi.init({ version: '2.0', sandbox: true })
+      window.Pi.init({ version: '2.0', sandbox })
       return true
     }
     return false
@@ -71,7 +80,7 @@ function bootPiSdkTestnet() {
 }
 
 configurePiBrowserUi()
-bootPiSdkTestnet()
+bootPiSdk()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
