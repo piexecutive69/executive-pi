@@ -16,7 +16,21 @@ function toNullableString(value) {
   return next || null
 }
 
+function toBooleanInt(value, fallback = 0) {
+  if (value === undefined || value === null) return fallback ? 1 : 0
+  if (typeof value === 'boolean') return value ? 1 : 0
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return 1
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return 0
+  return fallback ? 1 : 0
+}
+
 const ORDER_STATUSES = new Set(['pending', 'waiting_payment', 'paid', 'cancelled', 'completed'])
+const USER_STATUSES = new Set(['active', 'inactive'])
+const MARKUP_MODES = new Set(['fixed', 'percentage'])
+const BONUS_RULE_TYPES = new Set(['transaction_bonus', 'upgrade_bonus'])
+const BONUS_MODES = new Set(['fixed', 'percentage'])
+const BONUS_CURRENCIES = new Set(['idr'])
 const PRODUCT_IMAGE_PREFIX = '/assets/img/products/'
 
 function slugify(input) {
@@ -56,7 +70,338 @@ function canDeleteManagedProductImage(imageUrl) {
   return Boolean(imageUrl && String(imageUrl).startsWith(PRODUCT_IMAGE_PREFIX))
 }
 
+async function ensureSystemConfigsTable(mysql) {
+  await mysql.query(
+    `CREATE TABLE IF NOT EXISTS system_configs (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      config_key VARCHAR(120) NOT NULL UNIQUE,
+      config_value TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+  )
+}
+
+async function getSystemConfigMap(mysql, keys = []) {
+  if (!keys.length) return new Map()
+  const placeholders = keys.map(() => '?').join(',')
+  const [rows] = await mysql.query(
+    `SELECT config_key, config_value
+     FROM system_configs
+     WHERE config_key IN (${placeholders})`,
+    keys,
+  )
+  return new Map(rows.map((row) => [String(row.config_key), row.config_value]))
+}
+
+async function upsertSystemConfig(mysql, key, value) {
+  await mysql.query(
+    `INSERT INTO system_configs (config_key, config_value)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE
+       config_value = VALUES(config_value),
+       updated_at = NOW()`,
+    [key, String(value)],
+  )
+}
+
 export async function adminRoutes(app) {
+  app.get(
+    '/system-config',
+    {
+      schema: {
+        tags: ['Admin'],
+        summary: 'Admin get system config (gateway + markups + bonus + upgrade)',
+      },
+    },
+    async () => {
+      await ensureSystemConfigsTable(app.mysql)
+      const [levels] = await app.mysql.query(
+        `SELECT id, code, display_name, sort_order, upgrade_fee_idr, upgrade_fee_pi, is_active
+         FROM membership_levels
+         ORDER BY sort_order ASC`,
+      )
+
+      const [gateways] = await app.mysql.query(
+        `SELECT id, code, name, is_active
+         FROM payment_gateways
+         ORDER BY id ASC`,
+      )
+
+      const [markups] = await app.mysql.query(
+        `SELECT id, level_id, product_type, product_code, markup_mode, markup_idr, min_markup_idr, is_active
+         FROM product_markups
+         WHERE product_code LIKE 'GLOBAL_PREPAID_%'
+            OR product_code LIKE 'GLOBAL_POSTPAID_%'`,
+      )
+      const [bonusRules] = await app.mysql.query(
+        `SELECT id, rule_type, for_level_id, depth, bonus_mode, bonus_value, bonus_currency, is_active
+         FROM affiliate_bonus_rules
+         WHERE bonus_currency = 'idr'
+         ORDER BY for_level_id ASC, rule_type ASC, depth ASC, id ASC`,
+      )
+      const systemConfigKeys = [
+        'physical_markup_mode',
+        'physical_markup_value',
+        'physical_min_markup_idr',
+        'physical_markup_active',
+      ]
+      const configMap = await getSystemConfigMap(app.mysql, systemConfigKeys)
+
+      const markupMap = new Map()
+      for (const row of markups) {
+        markupMap.set(`${row.level_id}:${row.product_type}`, row)
+      }
+
+      const levelConfigs = levels.map((level) => {
+        const prepaid = markupMap.get(`${level.id}:prepaid`) || null
+        const postpaid = markupMap.get(`${level.id}:postpaid`) || null
+        return {
+          level_id: level.id,
+          code: level.code,
+          display_name: level.display_name,
+          sort_order: level.sort_order,
+          level_is_active: Boolean(level.is_active),
+          upgrade_fee_idr: Number(level.upgrade_fee_idr || 0),
+          upgrade_fee_pi: Number(level.upgrade_fee_pi || 0),
+          prepaid_markup: prepaid
+            ? {
+                id: prepaid.id,
+                markup_mode: prepaid.markup_mode,
+                markup_idr: Number(prepaid.markup_idr || 0),
+                min_markup_idr: Number(prepaid.min_markup_idr || 0),
+                is_active: Boolean(prepaid.is_active),
+              }
+            : null,
+          postpaid_markup: postpaid
+            ? {
+                id: postpaid.id,
+                markup_mode: postpaid.markup_mode,
+                markup_idr: Number(postpaid.markup_idr || 0),
+                min_markup_idr: Number(postpaid.min_markup_idr || 0),
+                is_active: Boolean(postpaid.is_active),
+              }
+            : null,
+        }
+      })
+
+      return {
+        gateways: gateways.map((gateway) => ({
+          id: gateway.id,
+          code: gateway.code,
+          name: gateway.name,
+          is_active: Boolean(gateway.is_active),
+        })),
+        levels: levelConfigs,
+        bonuses: bonusRules.map((row) => ({
+          id: row.id,
+          rule_type: row.rule_type,
+          for_level_id: Number(row.for_level_id),
+          depth: Number(row.depth),
+          bonus_mode: row.bonus_mode,
+          bonus_value: Number(row.bonus_value || 0),
+          bonus_currency: 'idr',
+          is_active: Boolean(row.is_active),
+        })),
+        physical_markup: {
+          markup_mode: MARKUP_MODES.has(String(configMap.get('physical_markup_mode') || '').toLowerCase())
+            ? String(configMap.get('physical_markup_mode')).toLowerCase()
+            : 'fixed',
+          markup_value: Number(configMap.get('physical_markup_value') || 0),
+          min_markup_idr: Number(configMap.get('physical_min_markup_idr') || 0),
+          is_active: toBooleanInt(configMap.get('physical_markup_active'), 1) === 1,
+        },
+      }
+    },
+  )
+
+  app.patch(
+    '/system-config',
+    {
+      schema: {
+        tags: ['Admin'],
+        summary: 'Admin update system config (gateway + markups + bonus + upgrade)',
+      },
+    },
+    async (request, reply) => {
+      const body = request.body || {}
+      const gateways = Array.isArray(body.gateways) ? body.gateways : []
+      const markups = Array.isArray(body.markups) ? body.markups : []
+      const levels = Array.isArray(body.levels) ? body.levels : []
+      const bonuses = Array.isArray(body.bonuses) ? body.bonuses : []
+      const physicalMarkup = body.physical_markup && typeof body.physical_markup === 'object' ? body.physical_markup : null
+
+      if (!gateways.length && !markups.length && !levels.length && !bonuses.length && !physicalMarkup) {
+        return reply.code(400).send({ message: 'No config payload provided' })
+      }
+
+      await ensureSystemConfigsTable(app.mysql)
+      await app.mysql.query('START TRANSACTION')
+      try {
+        await app.mysql.query(
+          `UPDATE affiliate_bonus_rules
+           SET bonus_currency = 'idr'
+           WHERE bonus_currency <> 'idr'`,
+        )
+
+        for (const item of gateways) {
+          const code = String(item?.code || '').trim().toLowerCase()
+          if (!['pi_sdk', 'duitku'].includes(code)) {
+            throw new Error(`Invalid gateway code: ${code || '-'}`)
+          }
+          const isActive = toBooleanInt(item?.is_active, 0)
+          await app.mysql.query(
+            `UPDATE payment_gateways
+             SET is_active = ?
+             WHERE code = ?`,
+            [isActive, code],
+          )
+        }
+
+        for (const item of markups) {
+          const levelId = toInt(item?.level_id)
+          const productType = String(item?.product_type || '').trim().toLowerCase()
+          const markupMode = String(item?.markup_mode || 'fixed').trim().toLowerCase()
+          const markupIdr = Number(item?.markup_idr || 0)
+          const minMarkupIdr = Number(item?.min_markup_idr || 0)
+          const isActive = toBooleanInt(item?.is_active, 1)
+
+          if (!levelId) throw new Error('Invalid level_id on markups payload')
+          if (!['prepaid', 'postpaid'].includes(productType)) throw new Error(`Invalid product_type: ${productType || '-'}`)
+          if (!MARKUP_MODES.has(markupMode)) throw new Error(`Invalid markup_mode: ${markupMode || '-'}`)
+          if (!Number.isFinite(markupIdr) || markupIdr < 0) throw new Error('markup_idr must be >= 0')
+          if (!Number.isFinite(minMarkupIdr) || minMarkupIdr < 0) throw new Error('min_markup_idr must be >= 0')
+
+          const [levels] = await app.mysql.query('SELECT id, code FROM membership_levels WHERE id = ? LIMIT 1', [levelId])
+          if (!levels.length) throw new Error(`membership level not found: ${levelId}`)
+          const levelCode = String(levels[0].code || '').toLowerCase()
+          const productCode = `GLOBAL_${productType.toUpperCase()}_${levelCode}`
+
+          await app.mysql.query(
+            `INSERT INTO product_markups
+               (level_id, product_type, product_code, markup_mode, markup_idr, min_markup_idr, is_active)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               markup_mode = VALUES(markup_mode),
+               markup_idr = VALUES(markup_idr),
+               min_markup_idr = VALUES(min_markup_idr),
+               is_active = VALUES(is_active),
+               updated_at = NOW()`,
+            [levelId, productType, productCode, markupMode, markupIdr, minMarkupIdr, isActive],
+          )
+        }
+
+        for (const item of levels) {
+          const levelId = toInt(item?.level_id)
+          if (!levelId) throw new Error('Invalid level_id on levels payload')
+          const upgradeFeeIdr = Number(item?.upgrade_fee_idr || 0)
+          const upgradeFeePi = Number(item?.upgrade_fee_pi || 0)
+          const isActive = toBooleanInt(item?.is_active, 1)
+          if (!Number.isFinite(upgradeFeeIdr) || upgradeFeeIdr < 0) throw new Error('upgrade_fee_idr must be >= 0')
+          if (!Number.isFinite(upgradeFeePi) || upgradeFeePi < 0) throw new Error('upgrade_fee_pi must be >= 0')
+
+          await app.mysql.query(
+            `UPDATE membership_levels
+             SET upgrade_fee_idr = ?, upgrade_fee_pi = ?, is_active = ?
+             WHERE id = ?`,
+            [upgradeFeeIdr, upgradeFeePi, isActive, levelId],
+          )
+        }
+
+        for (const item of bonuses) {
+          const id = toInt(item?.id, 0)
+          const ruleType = String(item?.rule_type || '').trim().toLowerCase()
+          const levelId = toInt(item?.for_level_id || item?.level_id)
+          const depth = toInt(item?.depth)
+          const bonusMode = String(item?.bonus_mode || 'fixed').trim().toLowerCase()
+          const bonusValue = Number(item?.bonus_value || 0)
+          // Bonus distribution is IDR-only.
+          const bonusCurrency = 'idr'
+          const isActive = toBooleanInt(item?.is_active, 1)
+
+          if (!BONUS_RULE_TYPES.has(ruleType)) throw new Error(`Invalid rule_type: ${ruleType || '-'}`)
+          if (!levelId) throw new Error('Invalid for_level_id on bonuses payload')
+          if (depth < 1 || depth > 3) throw new Error('bonus depth must be between 1 and 3')
+          if (!BONUS_MODES.has(bonusMode)) throw new Error(`Invalid bonus_mode: ${bonusMode || '-'}`)
+          if (!BONUS_CURRENCIES.has(bonusCurrency)) throw new Error(`Invalid bonus_currency: ${bonusCurrency || '-'}`)
+          if (!Number.isFinite(bonusValue) || bonusValue < 0) throw new Error('bonus_value must be >= 0')
+
+          const [levels] = await app.mysql.query('SELECT id FROM membership_levels WHERE id = ? LIMIT 1', [levelId])
+          if (!levels.length) throw new Error(`membership level not found: ${levelId}`)
+
+          if (id > 0) {
+            await app.mysql.query(
+              `UPDATE affiliate_bonus_rules
+               SET rule_type = ?, for_level_id = ?, depth = ?, bonus_mode = ?, bonus_value = ?, bonus_currency = ?, is_active = ?
+               WHERE id = ?`,
+              [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, isActive, id],
+            )
+          } else {
+            const [existing] = await app.mysql.query(
+              `SELECT id
+               FROM affiliate_bonus_rules
+               WHERE rule_type = ? AND for_level_id = ? AND depth = ? AND bonus_currency = ?
+               ORDER BY id ASC
+               LIMIT 1`,
+              [ruleType, levelId, depth, bonusCurrency],
+            )
+            if (existing.length) {
+              await app.mysql.query(
+                `UPDATE affiliate_bonus_rules
+                 SET bonus_mode = ?, bonus_value = ?, is_active = ?
+                 WHERE id = ?`,
+                [bonusMode, bonusValue, isActive, existing[0].id],
+              )
+            } else {
+              await app.mysql.query(
+                `INSERT INTO affiliate_bonus_rules
+                   (rule_type, for_level_id, depth, bonus_mode, bonus_value, bonus_currency, is_active)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, isActive],
+              )
+            }
+          }
+        }
+
+        if (physicalMarkup) {
+          const markupMode = String(physicalMarkup.markup_mode || 'fixed').trim().toLowerCase()
+          const markupValue = Number(physicalMarkup.markup_value || 0)
+          const minMarkupIdr = Number(physicalMarkup.min_markup_idr || 0)
+          const isActive = toBooleanInt(physicalMarkup.is_active, 1)
+
+          if (!MARKUP_MODES.has(markupMode)) throw new Error(`Invalid physical markup_mode: ${markupMode || '-'}`)
+          if (!Number.isFinite(markupValue) || markupValue < 0) throw new Error('physical markup_value must be >= 0')
+          if (!Number.isFinite(minMarkupIdr) || minMarkupIdr < 0) throw new Error('physical min_markup_idr must be >= 0')
+
+          await upsertSystemConfig(app.mysql, 'physical_markup_mode', markupMode)
+          await upsertSystemConfig(app.mysql, 'physical_markup_value', markupValue)
+          await upsertSystemConfig(app.mysql, 'physical_min_markup_idr', minMarkupIdr)
+          await upsertSystemConfig(app.mysql, 'physical_markup_active', isActive)
+        }
+
+        await app.mysql.query('COMMIT')
+      } catch (error) {
+        await app.mysql.query('ROLLBACK')
+        return reply.code(400).send({ message: error.message || 'Failed to update system config' })
+      }
+
+      const [updatedGateways] = await app.mysql.query(
+        `SELECT id, code, name, is_active
+         FROM payment_gateways
+         ORDER BY id ASC`,
+      )
+      return {
+        ok: true,
+        gateways: updatedGateways.map((gateway) => ({
+          id: gateway.id,
+          code: gateway.code,
+          name: gateway.name,
+          is_active: Boolean(gateway.is_active),
+        })),
+      }
+    },
+  )
+
   app.get(
     '/product-categories',
     {
@@ -492,8 +837,17 @@ export async function adminRoutes(app) {
         return reply.code(400).send({ message: 'Invalid status value' })
       }
 
-      const [rows] = await app.mysql.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [id])
+      const [rows] = await app.mysql.query(
+        'SELECT id, payment_method, status FROM orders WHERE id = ? LIMIT 1',
+        [id],
+      )
       if (!rows.length) return reply.code(404).send({ message: 'Order not found' })
+      const order = rows[0]
+      if (String(order.payment_method || '').toLowerCase() === 'pi_sdk' && String(order.status) !== status) {
+        return reply.code(400).send({
+          message: 'Status transaksi Pi SDK tidak bisa diubah manual dari admin panel',
+        })
+      }
 
       await app.mysql.query(
         `UPDATE orders
@@ -576,6 +930,176 @@ export async function adminRoutes(app) {
           is_linked: Boolean(item.pi_uid),
         })),
       }
+    },
+  )
+
+  app.get(
+    '/users',
+    {
+      schema: {
+        tags: ['Admin'],
+        summary: 'Admin list users',
+      },
+    },
+    async (request) => {
+      const page = Math.max(toInt(request.query?.page, 1), 1)
+      const limit = Math.min(Math.max(toInt(request.query?.limit, 20), 1), 100)
+      const offset = (page - 1) * limit
+      const search = toNullableString(request.query?.search)
+      const status = toNullableString(request.query?.status)
+
+      const conditions = []
+      const params = []
+
+      if (status && status !== 'all') {
+        conditions.push('u.status = ?')
+        params.push(status)
+      }
+
+      if (search) {
+        const keyword = `%${search}%`
+        conditions.push('(u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)')
+        params.push(keyword, keyword, keyword)
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+      const [rows] = await app.mysql.query(
+        `SELECT
+           u.id, u.name, u.email, u.phone, u.profile_image_url, u.idr_balance, u.pi_balance, u.status, u.created_at, u.updated_at,
+           upw.pi_uid, upw.wallet_address, upw.last_pi_balance, upw.last_synced_at,
+           ml.code AS membership_code, ml.display_name AS membership_name
+         FROM users u
+         LEFT JOIN user_pi_wallets upw ON upw.user_id = u.id
+         LEFT JOIN user_memberships um ON um.user_id = u.id AND um.status = 'active'
+         LEFT JOIN membership_levels ml ON ml.id = um.level_id
+         ${whereClause}
+         ORDER BY u.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
+      )
+
+      const [countRows] = await app.mysql.query(
+        `SELECT COUNT(*) AS total
+         FROM users u
+         ${whereClause}`,
+        params,
+      )
+
+      return {
+        page,
+        limit,
+        total: Number(countRows[0]?.total || 0),
+        items: rows,
+      }
+    },
+  )
+
+  app.get(
+    '/users/:id',
+    {
+      schema: {
+        tags: ['Admin'],
+        summary: 'Admin user detail',
+      },
+    },
+    async (request, reply) => {
+      const id = toInt(request.params?.id)
+      if (!id) return reply.code(400).send({ message: 'Invalid user id' })
+
+      const [rows] = await app.mysql.query(
+        `SELECT
+           u.id, u.name, u.email, u.phone, u.profile_image_url, u.idr_balance, u.pi_balance, u.status, u.created_at, u.updated_at,
+           upw.pi_uid, upw.pi_username, upw.wallet_address, upw.wallet_secret_id, upw.last_pi_balance, upw.last_synced_at,
+           ml.code AS membership_code, ml.display_name AS membership_name, um.started_at AS membership_started_at, um.expires_at AS membership_expires_at
+         FROM users u
+         LEFT JOIN user_pi_wallets upw ON upw.user_id = u.id
+         LEFT JOIN user_memberships um ON um.user_id = u.id AND um.status = 'active'
+         LEFT JOIN membership_levels ml ON ml.id = um.level_id
+         WHERE u.id = ?
+         LIMIT 1`,
+        [id],
+      )
+      if (!rows.length) return reply.code(404).send({ message: 'User not found' })
+
+      const [addresses] = await app.mysql.query(
+        `SELECT
+           ua.address_line, ua.postal_code,
+           p.name AS province_name, r.name AS regency_name, d.name AS district_name, v.name AS village_name
+         FROM user_addresses ua
+         LEFT JOIN indonesia_provinces p ON p.id = ua.province_id
+         LEFT JOIN indonesia_regencies r ON r.id = ua.regency_id
+         LEFT JOIN indonesia_districts d ON d.id = ua.district_id
+         LEFT JOIN indonesia_villages v ON v.id = ua.village_id
+         WHERE ua.user_id = ?
+         LIMIT 1`,
+        [id],
+      )
+
+      const [orderSummary] = await app.mysql.query(
+        `SELECT
+           COUNT(*) AS total_orders,
+           COALESCE(SUM(CASE WHEN status IN ('paid','completed') THEN total_idr ELSE 0 END), 0) AS paid_total_idr
+         FROM orders
+         WHERE user_id = ?`,
+        [id],
+      )
+
+      const [recentOrders] = await app.mysql.query(
+        `SELECT id, status, total_idr, payment_method, created_at
+         FROM orders
+         WHERE user_id = ?
+         ORDER BY id DESC
+         LIMIT 5`,
+        [id],
+      )
+
+      return {
+        ...rows[0],
+        address: addresses[0] || null,
+        order_summary: {
+          total_orders: Number(orderSummary[0]?.total_orders || 0),
+          paid_total_idr: Number(orderSummary[0]?.paid_total_idr || 0),
+        },
+        recent_orders: recentOrders,
+      }
+    },
+  )
+
+  app.patch(
+    '/users/:id/status',
+    {
+      schema: {
+        tags: ['Admin'],
+        summary: 'Admin update user status',
+      },
+    },
+    async (request, reply) => {
+      const id = toInt(request.params?.id)
+      const status = String(request.body?.status || '').trim().toLowerCase()
+      if (!id) return reply.code(400).send({ message: 'Invalid user id' })
+      if (!USER_STATUSES.has(status)) {
+        return reply.code(400).send({ message: 'Invalid user status' })
+      }
+
+      const [rows] = await app.mysql.query('SELECT id FROM users WHERE id = ? LIMIT 1', [id])
+      if (!rows.length) return reply.code(404).send({ message: 'User not found' })
+
+      await app.mysql.query(
+        `UPDATE users
+         SET status = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [status, id],
+      )
+
+      const [updatedRows] = await app.mysql.query(
+        `SELECT id, name, email, phone, status, idr_balance, pi_balance, created_at, updated_at
+         FROM users
+         WHERE id = ?
+         LIMIT 1`,
+        [id],
+      )
+      return updatedRows[0]
     },
   )
 }

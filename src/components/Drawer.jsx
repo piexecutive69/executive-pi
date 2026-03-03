@@ -17,9 +17,18 @@ export default function Drawer({ open, onClose, user, onLogout }) {
       profileImageUrl: toApiAssetUrl(user?.profile_image_url) || '/assets/img/profile.jpg',
       idrBalance: Number(user?.idr_balance || 0),
       piBalance: Number(user?.pi_balance || 0),
+      membershipCode: String(user?.membership_code || 'member').toLowerCase(),
+      membershipName: user?.membership_name || 'Member',
     }),
     [lang, user],
   )
+  const profileMenuItems = useMemo(() => {
+    const currentCode = String(profile.membershipCode || 'member').toLowerCase()
+    return profileMenus.filter((menu) => {
+      if (menu.key !== 'upgrade') return true
+      return currentCode !== 'distributor'
+    })
+  }, [profile.membershipCode])
 
   function go(to) {
     navigate(to)
@@ -47,6 +56,11 @@ export default function Drawer({ open, onClose, user, onLogout }) {
           />
           <p className="mt-3 text-[18px] font-medium leading-tight text-[#e3ebfb]">{profile.name}</p>
           <p className="mt-1 text-[12px] text-[#9cb2de]">{profile.email}</p>
+          {userId ? (
+            <span className="mt-2 inline-flex rounded-full border border-[#6e8dc8]/35 bg-[#162a57] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#9fd0ff]">
+              {profile.membershipName}
+            </span>
+          ) : null}
         </div>
 
         {userId ? (
@@ -71,7 +85,7 @@ export default function Drawer({ open, onClose, user, onLogout }) {
         )}
 
         <ul className="mt-5 space-y-1">
-          {profileMenus.map((menu) => (
+          {profileMenuItems.map((menu) => (
             <li key={menu.key}>
               <button
                 type="button"

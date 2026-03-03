@@ -27,7 +27,7 @@ body {
 }
 
 .pi-bottom-nav {
-  bottom: var(--app-bottom-nav-total-offset);
+  bottom: max(0px, calc(var(--app-bottom-nav-safe) - 2px));
   padding-bottom: max(0px, var(--app-bottom-nav-safe));
 }
 

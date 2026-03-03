@@ -61,6 +61,21 @@ async function request(path, { method = 'GET', query, body, headers: extraHeader
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = data?.message || `Request failed (${response.status})`
+    const normalized = String(message || '').toLowerCase()
+    if (
+      normalized.includes('user not found') ||
+      normalized.includes('invalid user id') ||
+      normalized.includes('akun terkunci') ||
+      normalized.includes('phone and password are required')
+    ) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('pi-store-auth-invalid', {
+            detail: { message },
+          }),
+        )
+      }
+    }
     throw new Error(message)
   }
   return data
@@ -79,6 +94,17 @@ export function toApiAssetUrl(assetPath) {
 export const api = {
   getUser(userId = DEFAULT_USER_ID) {
     return request(`/api/users/${userId}`)
+  },
+
+  getUserMembership(userId = DEFAULT_USER_ID) {
+    return request(`/api/users/${userId}/membership`)
+  },
+
+  upgradeUserMembership(userId = DEFAULT_USER_ID, { toLevelCode = null } = {}) {
+    return request(`/api/users/${userId}/membership/upgrade`, {
+      method: 'POST',
+      body: { toLevelCode },
+    })
   },
 
   getUserProfile(userId = DEFAULT_USER_ID) {

@@ -89,9 +89,18 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
       name: user?.name || 'Guest User',
       email: user?.email || (lang === 'en' ? 'Not logged in' : 'Belum login'),
       profileImageUrl: toApiAssetUrl(user?.profile_image_url) || '/assets/img/profile.jpg',
+      membershipCode: String(user?.membership_code || 'member').toLowerCase(),
+      membershipName: user?.membership_name || 'Member',
     }),
     [user, lang],
   )
+  const profileMenuItems = useMemo(() => {
+    const currentCode = String(displayUser.membershipCode || 'member').toLowerCase()
+    return profileMenus.filter((menu) => {
+      if (menu.key !== 'upgrade') return true
+      return currentCode !== 'distributor'
+    })
+  }, [displayUser.membershipCode])
 
   return (
     <section className="pb-20">
@@ -117,6 +126,11 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
           <div>
             <p className="text-[16px] font-medium leading-tight text-[#e3ebfb]">{displayUser.name}</p>
             <p className="text-[12px] text-[#8ea6d7]">{displayUser.email}</p>
+            {userId ? (
+              <span className="mt-1 inline-flex rounded-full border border-[#6e8dc8]/35 bg-[#162a57] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#9fd0ff]">
+                {displayUser.membershipName}
+              </span>
+            ) : null}
           </div>
         </div>
         {!userId ? (
@@ -155,7 +169,7 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
       ) : null}
 
       <div className="mt-3 space-y-2">
-        {profileMenus.map((menu) => (
+        {profileMenuItems.map((menu) => (
           <button
             key={menu.key}
             type="button"

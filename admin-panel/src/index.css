@@ -186,20 +186,100 @@ button {
   background: #eef2f7;
 }
 
+.config-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.config-tab-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.config-tab-btn-active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.datatable-toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.datatable-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.datatable-label .admin-input {
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 10px;
+}
+
+.datatable-search {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.datatable-search .admin-input {
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 10px;
+}
+
+.admin-page-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .admin-table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
+  max-height: min(62vh, 720px);
 }
 
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 920px;
   font-size: 12px;
 }
 
 .admin-table thead {
+  background: #eef2f7;
+}
+
+.admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: #eef2f7;
 }
 
@@ -214,6 +294,23 @@ button {
 .admin-table th {
   color: #475569;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.admin-table tbody tr:hover {
+  background: #f8fbff;
 }
 
 .admin-pill {
@@ -245,6 +342,34 @@ button {
   padding: 12px;
 }
 
+.admin-toast {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #22c55e;
+  background: #ecfdf3;
+  color: #166534;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-toast-close {
+  border: 0;
+  background: transparent;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 2px;
+}
+
 @media (max-width: 960px) {
   .adminlte-shell {
     grid-template-columns: 1fr;
@@ -253,5 +378,22 @@ button {
   .admin-sidebar {
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .datatable-search {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .datatable-search .admin-input {
+    min-width: 0 !important;
+    flex: 1;
+  }
+
+  .admin-toast {
+    right: 10px;
+    left: 10px;
+    top: 10px;
   }
 }

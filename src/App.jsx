@@ -35,6 +35,14 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const clearClientSession = () => {
+    setUser(null)
+    setWishlistItems([])
+    setCartCount(0)
+    window.localStorage.removeItem(SESSION_USER_ID_KEY)
+    clearPiSdkSession()
+  }
+
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : ''
     return () => {
@@ -50,10 +58,15 @@ export default function App() {
       setError('')
       try {
         const savedUserId = Number(window.localStorage.getItem(SESSION_USER_ID_KEY) || 0)
-        const [productRes, userRes] = await Promise.all([
-          api.listProducts({ page: 1, limit: 20 }),
-          savedUserId ? api.getUser(savedUserId) : Promise.resolve(null),
-        ])
+        const productRes = await api.listProducts({ page: 1, limit: 20 })
+        let userRes = null
+        if (savedUserId) {
+          try {
+            userRes = await api.getUser(savedUserId)
+          } catch {
+            clearClientSession()
+          }
+        }
         if (!active) return
         setProducts(productRes.items || [])
         const piSession = getPiSdkSession()
@@ -81,12 +94,19 @@ export default function App() {
   }
 
   const onLogout = () => {
-    setUser(null)
-    setWishlistItems([])
-    setCartCount(0)
-    window.localStorage.removeItem(SESSION_USER_ID_KEY)
-    clearPiSdkSession()
+    clearClientSession()
   }
+
+  useEffect(() => {
+    const handler = (event) => {
+      clearClientSession()
+      const message = event?.detail?.message || 'Sesi berakhir, silakan login ulang.'
+      setError(message)
+    }
+    window.addEventListener('pi-store-auth-invalid', handler)
+    return () => window.removeEventListener('pi-store-auth-invalid', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!user?.id) {

@@ -10,6 +10,9 @@ function resolveApiBaseUrl() {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3100'
   }
+  if (hostname === 'panel.pi-executive.com') {
+    return 'https://store.pi-executive.com'
+  }
   return origin
 }
 
@@ -41,6 +44,11 @@ async function request(path, { method = 'GET', query, body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Unexpected API response for ${path}. Check VITE_API_BASE_URL.`)
+  }
+
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     throw new Error(data?.message || `Request failed (${response.status})`)
@@ -54,6 +62,17 @@ export const apiBaseUrl = API_BASE_URL
 export const api = {
   getSummary() {
     return request('/api/admin/summary')
+  },
+
+  getSystemConfig() {
+    return request('/api/admin/system-config')
+  },
+
+  updateSystemConfig(payload) {
+    return request('/api/admin/system-config', {
+      method: 'PATCH',
+      body: payload,
+    })
   },
 
   listProducts({ page = 1, limit = 10, search = '', status = 'all' } = {}) {
@@ -124,16 +143,27 @@ export const api = {
     })
   },
 
-  syncDigiflazz(cmd = 'all') {
-    return request('/api/digiflazz/sync/price-list', {
-      method: 'POST',
-      body: { cmd, dryRun: false },
+  listUsers({ page = 1, limit = 10, search = '', status = 'all' } = {}) {
+    return request('/api/admin/users', {
+      query: { page, limit, search, status },
     })
   },
 
-  autoSyncMissingDigiflazz() {
-    return request('/api/digiflazz/sync/auto-missing', {
+  getUserDetail(userId) {
+    return request(`/api/admin/users/${userId}`)
+  },
+
+  updateUserStatus(userId, status) {
+    return request(`/api/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: { status },
+    })
+  },
+
+  syncDigiflazz(cmd = 'prepaid') {
+    return request('/api/digiflazz/sync/price-list', {
       method: 'POST',
+      body: { cmd, dryRun: false },
     })
   },
 

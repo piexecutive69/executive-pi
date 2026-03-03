@@ -12,6 +12,7 @@ import { useI18n } from '../lib/i18n'
 const menuMeta = {
   orders: { idTitle: 'Pesanan Saya', enTitle: 'My Orders' },
   wishlist: { idTitle: 'Wishlist', enTitle: 'Wishlist' },
+  upgrade: { idTitle: 'Upgrade Level', enTitle: 'Upgrade Level' },
   notifications: { idTitle: 'Notifikasi', enTitle: 'Notifications' },
   settings: { idTitle: 'Pengaturan', enTitle: 'Settings' },
   payments: { idTitle: 'Metode Pembayaran', enTitle: 'Payment Methods' },
@@ -29,6 +30,9 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
   const [topupAmount, setTopupAmount] = useState(10000)
   const [topupLoading, setTopupLoading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [membershipData, setMembershipData] = useState(null)
+  const [upgradeLoading, setUpgradeLoading] = useState(false)
+  const [upgradingCode, setUpgradingCode] = useState('')
   const [topupQris, setTopupQris] = useState({ open: false, url: '', reference: '', qrString: '' })
 
   const currentMenu = useMemo(() => menuMeta[menuKey] || null, [menuKey])
@@ -57,6 +61,49 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
       active = false
     }
   }, [menuKey, userId, lang])
+
+  useEffect(() => {
+    if (!userId || menuKey !== 'upgrade') return
+    let active = true
+
+    async function loadMembership() {
+      setUpgradeLoading(true)
+      try {
+        const data = await api.getUserMembership(userId)
+        if (!active) return
+        setMembershipData(data)
+      } catch (err) {
+        if (!active) return
+        toast.error(err.message || (lang === 'en' ? 'Failed to load membership data.' : 'Gagal memuat data membership.'))
+      } finally {
+        if (active) setUpgradeLoading(false)
+      }
+    }
+
+    loadMembership()
+    return () => {
+      active = false
+    }
+  }, [menuKey, userId, lang])
+
+  const upgradeMembership = async (toLevelCode) => {
+    if (!userId || !toLevelCode) return
+    setUpgradingCode(String(toLevelCode))
+    try {
+      const result = await api.upgradeUserMembership(userId, { toLevelCode })
+      const nextUser = result?.user || null
+      if (nextUser) {
+        onUserUpdated?.((prev) => (prev && Number(prev.id) === Number(nextUser.id) ? { ...prev, ...nextUser } : prev))
+      }
+      const refreshedMembership = await api.getUserMembership(userId)
+      setMembershipData(refreshedMembership)
+      toast.success(result?.message || (lang === 'en' ? 'Upgrade successful.' : 'Upgrade berhasil.'))
+    } catch (err) {
+      toast.error(err.message || (lang === 'en' ? 'Upgrade failed.' : 'Upgrade gagal.'))
+    } finally {
+      setUpgradingCode('')
+    }
+  }
 
   const topup = async () => {
     if (Number(topupAmount) <= 0) {
@@ -248,6 +295,45 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
 
       {userId && menuKey === 'notifications' ? (
         <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">{lang === 'en' ? 'No new notifications.' : 'Tidak ada notifikasi baru.'}</div>
+      ) : null}
+
+      {userId && menuKey === 'upgrade' ? (
+        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
+          {upgradeLoading ? <p className="text-[12px] text-[#8ea6d7]">{lang === 'en' ? 'Loading membership...' : 'Memuat membership...'}</p> : null}
+          {!upgradeLoading ? (
+            <>
+              <div className="mb-3 rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-3 py-2">
+                <p className="text-[11px] text-[#8ea6d7]">{lang === 'en' ? 'Current Level' : 'Level Saat Ini'}</p>
+                <p className="text-[13px] font-medium uppercase text-[#e3ebfb]">{membershipData?.current?.display_name || '-'}</p>
+              </div>
+
+              {!membershipData?.options?.length ? (
+                <p className="text-[12px] text-[#8ea6d7]">{lang === 'en' ? 'You are already at distributor level.' : 'Level kamu sudah distributor (tertinggi).'}</p>
+              ) : (
+                <div className="space-y-2">
+                  {membershipData.options.map((item) => (
+                    <div key={item.code} className="rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-3 py-2">
+                      <p className="text-[13px] font-medium uppercase text-[#e3ebfb]">{item.display_name}</p>
+                      <p className="text-[11px] text-[#8ea6d7]">
+                        {lang === 'en' ? 'Upgrade Fee (IDR balance only):' : 'Biaya Upgrade (hanya saldo IDR):'} {formatIDR(item.upgrade_fee_idr)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => upgradeMembership(item.code)}
+                        disabled={Boolean(upgradingCode)}
+                        className="mt-2 w-full cursor-pointer rounded-full bg-[#274786] py-2 text-[12px] font-medium text-[#e3ebfb] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {upgradingCode === item.code
+                          ? (lang === 'en' ? 'Processing...' : 'Memproses...')
+                          : (lang === 'en' ? 'Upgrade with IDR Balance' : 'Upgrade dengan Saldo IDR')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
       ) : null}
 
       {userId && menuKey === 'privacy' ? (

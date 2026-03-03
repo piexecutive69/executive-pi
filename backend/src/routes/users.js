@@ -6,6 +6,42 @@ import { pipeline } from 'node:stream/promises'
 import { resolvePiContextFromRequest } from '../lib/piContext.js'
 
 export async function userRoutes(app) {
+  const ALLOWED_MEMBERSHIP_CODES = new Set(['member', 'reseller', 'agen', 'distributor'])
+  async function getActiveMembershipForUser(userId) {
+    const [rows] = await app.mysql.query(
+      `SELECT ml.id AS level_id, ml.code, ml.display_name, ml.sort_order, ml.upgrade_fee_idr, ml.upgrade_fee_pi
+       FROM user_memberships um
+       JOIN membership_levels ml ON ml.id = um.level_id
+       WHERE um.user_id = ? AND um.status = 'active'
+       ORDER BY um.updated_at DESC
+       LIMIT 1`,
+      [userId],
+    )
+    return rows[0] || null
+  }
+
+  async function getDefaultMembership() {
+    const [rows] = await app.mysql.query(
+      `SELECT id AS level_id, code, display_name, sort_order, upgrade_fee_idr, upgrade_fee_pi
+       FROM membership_levels
+       WHERE is_default = 1 AND is_active = 1
+       ORDER BY sort_order ASC
+       LIMIT 1`,
+    )
+    return rows[0] || null
+  }
+
+  async function resolveMembershipSnapshot(userId) {
+    const active = await getActiveMembershipForUser(userId)
+    if (active) return active
+    return getDefaultMembership()
+  }
+
+  function hasValidMembership(user) {
+    const code = String(user?.membership_code || '').toLowerCase()
+    return ALLOWED_MEMBERSHIP_CODES.has(code)
+  }
+
   async function getUserById(userId) {
     const [rows] = await app.mysql.query(
       `SELECT id, name, email, phone, profile_image_url, idr_balance, pi_balance, status, created_at, updated_at
@@ -14,7 +50,17 @@ export async function userRoutes(app) {
        LIMIT 1`,
       [userId],
     )
-    return rows[0] || null
+    const user = rows[0] || null
+    if (!user) return null
+
+    const membership = await resolveMembershipSnapshot(userId)
+    return {
+      ...user,
+      membership_code: membership?.code || null,
+      membership_name: membership?.display_name || null,
+      membership_level_id: membership?.level_id || null,
+      membership_sort_order: membership?.sort_order || null,
+    }
   }
 
   function toNullableString(value) {
@@ -298,6 +344,13 @@ export async function userRoutes(app) {
       }
 
       const user = rows[0]
+      if (String(user.status || '').toLowerCase() !== 'active') {
+        return reply.code(403).send({ message: 'Akun terkunci. Hubungi admin.' })
+      }
+      const baseUser = await getUserById(Number(user.id))
+      if (!hasValidMembership(baseUser)) {
+        return reply.code(403).send({ message: 'Level membership akun tidak valid. Hubungi admin.' })
+      }
       const piAuthPayload = request.body?.piAuth || null
       if (piAuthPayload && (piAuthPayload.uid || piAuthPayload.accessToken)) {
         const synced = await syncPiWalletForUser({
@@ -315,7 +368,7 @@ export async function userRoutes(app) {
 
       const existingPi = await getPiWalletByUserId(Number(user.id))
       return {
-        ...user,
+        ...baseUser,
         pi_auth: existingPi,
       }
     },
@@ -371,7 +424,7 @@ export async function userRoutes(app) {
       const walletSecretId = toNullableString(request.body?.walletSecretId)
 
       const [rows] = await app.mysql.query(
-        `SELECT id
+        `SELECT id, status
          FROM users
          WHERE email = ?
          LIMIT 1`,
@@ -381,6 +434,9 @@ export async function userRoutes(app) {
       let userId = null
       if (rows.length) {
         userId = Number(rows[0].id)
+        if (String(rows[0].status || '').toLowerCase() !== 'active') {
+          return reply.code(403).send({ message: 'Akun terkunci. Hubungi admin.' })
+        }
         await app.mysql.query(
           `UPDATE users
            SET name = ?, pi_balance = GREATEST(pi_balance, ?), updated_at = NOW()
@@ -411,6 +467,9 @@ export async function userRoutes(app) {
         piNetwork: piContext.network,
       })
       const user = await getUserById(userId)
+      if (!hasValidMembership(user)) {
+        return reply.code(403).send({ message: 'Level membership akun tidak valid. Hubungi admin.' })
+      }
       return {
         ...user,
         pi_auth: syncedWallet || {
@@ -605,6 +664,187 @@ export async function userRoutes(app) {
       }
 
       return user
+    },
+  )
+
+  app.get(
+    '/:id/membership',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Get user membership and available upgrade levels',
+      },
+    },
+    async (request, reply) => {
+      const userId = Number(request.params.id)
+      if (!userId) {
+        return reply.code(400).send({ message: 'Invalid user id' })
+      }
+
+      const user = await getUserById(userId)
+      if (!user) {
+        return reply.code(404).send({ message: 'User not found' })
+      }
+
+      const currentMembership = await resolveMembershipSnapshot(userId)
+      const currentSort = Number(currentMembership?.sort_order || 0)
+
+      const [allLevels] = await app.mysql.query(
+        `SELECT id AS level_id, code, display_name, sort_order, upgrade_fee_idr, upgrade_fee_pi, is_active
+         FROM membership_levels
+         WHERE is_active = 1
+         ORDER BY sort_order ASC`,
+      )
+
+      const upgradeOptions = allLevels.filter((level) => Number(level.sort_order) > currentSort)
+
+      return {
+        current: currentMembership
+          ? {
+              level_id: Number(currentMembership.level_id),
+              code: currentMembership.code,
+              display_name: currentMembership.display_name,
+              sort_order: Number(currentMembership.sort_order),
+            }
+          : null,
+        can_upgrade: upgradeOptions.length > 0,
+        options: upgradeOptions.map((level) => ({
+          level_id: Number(level.level_id),
+          code: level.code,
+          display_name: level.display_name,
+          sort_order: Number(level.sort_order),
+          upgrade_fee_idr: Number(level.upgrade_fee_idr || 0),
+          upgrade_fee_pi: Number(level.upgrade_fee_pi || 0),
+        })),
+      }
+    },
+  )
+
+  app.post(
+    '/:id/membership/upgrade',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Upgrade user membership using IDR balance only',
+      },
+    },
+    async (request, reply) => {
+      const userId = Number(request.params.id)
+      const toLevelCode = toNullableString(request.body?.toLevelCode)?.toLowerCase() || null
+      if (!userId) {
+        return reply.code(400).send({ message: 'Invalid user id' })
+      }
+
+      const user = await getUserById(userId)
+      if (!user) {
+        return reply.code(404).send({ message: 'User not found' })
+      }
+      if (String(user.status || '').toLowerCase() !== 'active') {
+        return reply.code(403).send({ message: 'Akun terkunci. Hubungi admin.' })
+      }
+
+      const currentMembership = await resolveMembershipSnapshot(userId)
+      if (!currentMembership) {
+        return reply.code(400).send({ message: 'Membership default belum terkonfigurasi.' })
+      }
+      const currentSort = Number(currentMembership.sort_order || 0)
+
+      const [candidateRows] = await app.mysql.query(
+        `SELECT id AS level_id, code, display_name, sort_order, upgrade_fee_idr, upgrade_fee_pi
+         FROM membership_levels
+         WHERE is_active = 1
+         ORDER BY sort_order ASC`,
+      )
+      const eligibleLevels = candidateRows.filter((level) => Number(level.sort_order) > currentSort)
+      if (!eligibleLevels.length) {
+        return reply.code(400).send({ message: 'Level saat ini sudah tertinggi (Distributor).' })
+      }
+
+      let target = null
+      if (toLevelCode) {
+        target = eligibleLevels.find((level) => String(level.code).toLowerCase() === toLevelCode) || null
+        if (!target) {
+          return reply.code(400).send({ message: 'Target level tidak valid untuk upgrade.' })
+        }
+      } else {
+        target = eligibleLevels[0]
+      }
+
+      const feeIdr = Number(target.upgrade_fee_idr || 0)
+      const currentIdrBalance = Number(user.idr_balance || 0)
+      if (currentIdrBalance < feeIdr) {
+        return reply.code(400).send({ message: 'Saldo IDR tidak cukup untuk upgrade.' })
+      }
+
+      await app.mysql.query('START TRANSACTION')
+      try {
+        await app.mysql.query(
+          `UPDATE users
+           SET idr_balance = idr_balance - ?, updated_at = NOW()
+           WHERE id = ?`,
+          [feeIdr, userId],
+        )
+
+        const [membershipRows] = await app.mysql.query(
+          `SELECT id
+           FROM user_memberships
+           WHERE user_id = ?
+           LIMIT 1`,
+          [userId],
+        )
+
+        if (membershipRows.length) {
+          await app.mysql.query(
+            `UPDATE user_memberships
+             SET level_id = ?, status = 'active', started_at = NOW(), expires_at = NULL, updated_at = NOW()
+             WHERE user_id = ?`,
+            [target.level_id, userId],
+          )
+        } else {
+          await app.mysql.query(
+            `INSERT INTO user_memberships
+               (user_id, level_id, started_at, expires_at, status)
+             VALUES (?, ?, NOW(), NULL, 'active')`,
+            [userId, target.level_id],
+          )
+        }
+
+        await app.mysql.query(
+          `INSERT INTO membership_upgrade_history
+             (user_id, from_level_id, to_level_id, fee_idr, fee_pi, payment_status, payment_reference, upgraded_at)
+           VALUES (?, ?, ?, ?, ?, 'paid', ?, NOW())`,
+          [
+            userId,
+            Number(currentMembership.level_id || 0) || null,
+            Number(target.level_id),
+            feeIdr,
+            Number(target.upgrade_fee_pi || 0),
+            `wallet_idr_upgrade_${Date.now()}`,
+          ],
+        )
+
+        await app.mysql.query('COMMIT')
+      } catch (error) {
+        await app.mysql.query('ROLLBACK')
+        return reply.code(500).send({ message: error.message || 'Gagal upgrade membership.' })
+      }
+
+      const refreshedUser = await getUserById(userId)
+      const membership = await resolveMembershipSnapshot(userId)
+
+      return {
+        ok: true,
+        message: 'Upgrade membership berhasil menggunakan saldo IDR.',
+        user: refreshedUser,
+        membership: membership
+          ? {
+              level_id: Number(membership.level_id),
+              code: membership.code,
+              display_name: membership.display_name,
+              sort_order: Number(membership.sort_order),
+            }
+          : null,
+      }
     },
   )
 
