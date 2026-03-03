@@ -6,14 +6,65 @@ import './index.css'
 import App from './App.jsx'
 import { I18nProvider } from './lib/i18n.jsx'
 
-function configurePiBrowserUi() {
-  if (typeof window === 'undefined') return
-
+function isPiBrowserClient() {
+  if (typeof window === 'undefined') return false
   const ua = String(window.navigator?.userAgent || '').toLowerCase()
   const brands = Array.isArray(window.navigator?.userAgentData?.brands)
     ? window.navigator.userAgentData.brands.map((item) => String(item.brand || '').toLowerCase()).join(' ')
     : ''
-  const isPiBrowser = ua.includes('pibrowser') || ua.includes('pi browser') || ua.includes('minepi') || brands.includes('pi')
+  const referrer = String(document.referrer || '').toLowerCase()
+  const hasPiReferrer =
+    referrer.includes('minepi.com') ||
+    referrer.includes('sandbox.minepi.com') ||
+    referrer.includes('wallet.pinet.com') ||
+    referrer.includes('pinet.com')
+  const hasPiQueryFlag =
+    String(window.location?.search || '').toLowerCase().includes('pi=') ||
+    String(window.location?.search || '').toLowerCase().includes('pi_browser=') ||
+    String(window.location?.search || '').toLowerCase().includes('pibrowser=')
+  const isAndroidWebView = ua.includes(' wv') || ua.includes('; wv')
+  const isMobile = ua.includes('android') || ua.includes('iphone') || ua.includes('ipad')
+
+  return (
+    ua.includes('pibrowser') ||
+    ua.includes('pi browser') ||
+    ua.includes('minepi') ||
+    brands.includes('pi') ||
+    hasPiReferrer ||
+    hasPiQueryFlag ||
+    (isAndroidWebView && isMobile)
+  )
+}
+
+function isProtectedPiHost() {
+  if (typeof window === 'undefined') return false
+  const host = String(window.location?.hostname || '').toLowerCase()
+  return host === 'mall.pi-executive.com' || host === 'store.pi-executive.com'
+}
+
+function enforcePiBrowserOnly() {
+  if (typeof window === 'undefined') return
+  if (!isProtectedPiHost()) return
+
+  const currentPath = String(window.location?.pathname || '/')
+  const isRequiredPage = currentPath === '/pi-browser-required'
+  const isPiBrowser = isPiBrowserClient()
+
+  if (!isPiBrowser && !isRequiredPage) {
+    window.location.replace('/pi-browser-required')
+    return
+  }
+
+  if (isPiBrowser && isRequiredPage) {
+    window.location.replace('/')
+  }
+}
+
+function configurePiBrowserUi() {
+  if (typeof window === 'undefined') return
+
+  const ua = String(window.navigator?.userAgent || '').toLowerCase()
+  const isPiBrowser = isPiBrowserClient()
   const isAndroid = ua.includes('android') || String(window.navigator?.platform || '').toLowerCase().includes('android')
   const root = document.documentElement
   if (isPiBrowser) {
@@ -79,6 +130,7 @@ function bootPiSdk() {
   document.head.appendChild(script)
 }
 
+enforcePiBrowserOnly()
 configurePiBrowserUi()
 bootPiSdk()
 

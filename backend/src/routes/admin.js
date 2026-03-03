@@ -409,7 +409,7 @@ export async function adminRoutes(app) {
       const [rows] = await app.mysql.query(
         `SELECT
            o.id, o.user_id, o.status, o.subtotal_idr, o.shipping_idr, o.total_idr,
-           o.payment_method, o.shipping_address, o.created_at, o.updated_at,
+           o.payment_method, o.pi_payment_identifier, o.pi_txid, o.shipping_address, o.created_at, o.updated_at,
            u.name AS user_name, u.email AS user_email, u.phone AS user_phone
          FROM orders o
          JOIN users u ON u.id = o.user_id
@@ -451,7 +451,7 @@ export async function adminRoutes(app) {
       const [rows] = await app.mysql.query(
         `SELECT
            o.id, o.user_id, o.status, o.subtotal_idr, o.shipping_idr, o.total_idr,
-           o.payment_method, o.shipping_address, o.created_at, o.updated_at,
+           o.payment_method, o.pi_payment_identifier, o.pi_txid, o.shipping_address, o.created_at, o.updated_at,
            u.name AS user_name, u.email AS user_email, u.phone AS user_phone
          FROM orders o
          JOIN users u ON u.id = o.user_id
@@ -503,7 +503,7 @@ export async function adminRoutes(app) {
       )
 
       const [updatedRows] = await app.mysql.query(
-        `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, shipping_address, created_at, updated_at
+        `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, pi_payment_identifier, pi_txid, shipping_address, created_at, updated_at
          FROM orders
          WHERE id = ?
          LIMIT 1`,

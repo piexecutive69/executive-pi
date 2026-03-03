@@ -1,8 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, apiBaseUrl } from './lib/api'
 
-const tabs = ['dashboard', 'products', 'orders', 'wallets', 'digiflazz']
+const tabs = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'products', label: 'Products' },
+  { key: 'orders', label: 'Orders' },
+  { key: 'wallets', label: 'Pi Wallets' },
+  { key: 'digiflazz', label: 'Digiflazz' },
+]
+
 const orderStatuses = ['pending', 'waiting_payment', 'paid', 'cancelled', 'completed']
+
+const blankProductForm = {
+  name: '',
+  description: '',
+  price_idr: 0,
+  price_pi: 0,
+  stock: 0,
+  category_id: '',
+  image_url: '',
+  is_active: true,
+}
 
 const idr = (v) =>
   new Intl.NumberFormat('id-ID', {
@@ -19,20 +37,8 @@ function mapAssetUrl(imageUrl = '') {
   return `${apiBaseUrl}${String(imageUrl).startsWith('/') ? '' : '/'}${imageUrl}`
 }
 
-const blankProductForm = {
-  name: '',
-  description: '',
-  price_idr: 0,
-  price_pi: 0,
-  stock: 0,
-  category_id: '',
-  image_url: '',
-  is_active: true,
-}
-
 function ProductForm({
   title,
-  submitText,
   categories,
   form,
   setForm,
@@ -44,30 +50,30 @@ function ProductForm({
   const preview = mapAssetUrl(form.image_url)
 
   return (
-    <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/60 p-2 md:items-center">
-      <form onSubmit={onSubmit} className="soft-card w-full max-w-[620px] rounded-2xl p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[17px] font-bold">{title}</h3>
-          <button type="button" onClick={onCancel} className="rounded-md border border-[#3d5d82] px-2 py-0.5 text-[10px] font-medium">Tutup</button>
+    <div className="admin-modal">
+      <form onSubmit={onSubmit} className="admin-panel-card w-full max-w-[760px] p-5">
+        <div className="mb-4 flex items-center justify-between border-b border-[#d9e2ef] pb-3">
+          <h3 className="text-[18px] font-semibold text-[#0f172a]">{title}</h3>
+          <button type="button" onClick={onCancel} className="admin-btn admin-btn-light">Close</button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-[12px] text-[#9bb0c8]">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="admin-field-label">
             Nama Produk
             <input
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
               required
             />
           </label>
 
-          <label className="text-[12px] text-[#9bb0c8]">
+          <label className="admin-field-label">
             Kategori
             <select
               value={form.category_id}
               onChange={(e) => setForm((p) => ({ ...p, category_id: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
               required
             >
               <option value="">Pilih kategori</option>
@@ -77,72 +83,64 @@ function ProductForm({
             </select>
           </label>
 
-          <label className="text-[12px] text-[#9bb0c8]">
+          <label className="admin-field-label">
             Harga IDR
             <input
               type="number"
               min="0"
               value={form.price_idr}
               onChange={(e) => setForm((p) => ({ ...p, price_idr: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
               required
             />
           </label>
 
-          <label className="text-[12px] text-[#9bb0c8]">
-            Harga Pi
+          <label className="admin-field-label">
+            Harga PI
             <input
               type="number"
               min="0"
               step="0.0001"
               value={form.price_pi}
               onChange={(e) => setForm((p) => ({ ...p, price_pi: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
             />
           </label>
 
-          <label className="text-[12px] text-[#9bb0c8]">
+          <label className="admin-field-label">
             Stock
             <input
               type="number"
               min="0"
               value={form.stock}
               onChange={(e) => setForm((p) => ({ ...p, stock: e.target.value }))}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
               required
             />
           </label>
 
-          <label className="text-[12px] text-[#9bb0c8]">
-            Gambar Produk (Upload)
+          <label className="admin-field-label">
+            Upload Gambar
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={onImageChange}
-              className="mt-1 w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input"
             />
-            <span className="mt-1 block text-[11px] text-[#7d98b7]">
-              Upload akan menyimpan URL seperti `/assets/img/products/....png`.
-            </span>
-            {uploadingImage ? <span className="mt-1 block text-[11px] text-cyan-300">Uploading image...</span> : null}
+            <span className="mt-1 block text-[11px] text-[#64748b]">URL akan tersimpan otomatis.</span>
+            {uploadingImage ? <span className="mt-1 block text-[11px] text-[#2563eb]">Uploading...</span> : null}
           </label>
 
-          <input
-            type="hidden"
-            value={form.image_url || ''}
-            onChange={(e) => setForm((p) => ({ ...p, image_url: e.target.value }))}
-          />
-
-          <label className="sm:col-span-2 text-[12px] text-[#9bb0c8]">
+          <label className="admin-field-label md:col-span-2">
             Deskripsi
             <textarea
               value={form.description || ''}
               onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-              className="mt-1 min-h-[90px] w-full rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"
+              className="admin-input min-h-[120px]"
             />
           </label>
 
-          <label className="sm:col-span-2 flex items-center gap-2 text-[13px] text-[#b9cee6]">
+          <label className="flex items-center gap-2 text-[13px] text-[#334155] md:col-span-2">
             <input
               type="checkbox"
               checked={Boolean(form.is_active)}
@@ -152,18 +150,77 @@ function ProductForm({
           </label>
 
           {preview ? (
-            <div className="sm:col-span-2 rounded-xl border border-[#35557a] bg-[#0b1a2c] p-2">
-              <p className="mb-2 text-[11px] text-[#8db0d4]">Preview gambar dari URL database:</p>
+            <div className="md:col-span-2 rounded-xl border border-[#dbe4f0] bg-[#f8fbff] p-3">
+              <p className="mb-2 text-[12px] text-[#475569]">Preview</p>
               <img src={preview} alt={form.name || 'Preview'} className="max-h-[180px] rounded-lg object-contain" />
             </div>
           ) : null}
         </div>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-md border border-[#3d5d82] px-2 py-1 text-[10px] font-medium">Batal</button>
-          <button type="submit" className="rounded-md bg-cyan-500/85 px-2 py-1 text-[10px] font-medium text-[#032329]">{submitText}</button>
+        <div className="mt-5 flex justify-end gap-2 border-t border-[#d9e2ef] pt-4">
+          <button type="button" onClick={onCancel} className="admin-btn admin-btn-light">Batal</button>
+          <button type="submit" className="admin-btn admin-btn-primary">Simpan</button>
         </div>
       </form>
+    </div>
+  )
+}
+
+function OrderDetailModal({ detail, onClose }) {
+  if (!detail) return null
+
+  const txid = detail.pi_txid || '-'
+  const explorerUrl = detail.pi_txid ? `https://blockexplorer.minepi.com/mainnet/tx/${detail.pi_txid}` : ''
+
+  return (
+    <div className="admin-modal">
+      <div className="admin-panel-card w-full max-w-[860px] p-5">
+        <div className="mb-4 flex items-center justify-between border-b border-[#d9e2ef] pb-3">
+          <h3 className="text-[18px] font-semibold text-[#0f172a]">Order #{detail.id}</h3>
+          <button onClick={onClose} className="admin-btn admin-btn-light">Close</button>
+        </div>
+
+        <div className="mb-4 grid gap-2 text-[13px] text-[#334155] md:grid-cols-2">
+          <p>User: <span className="font-medium">{detail.user_name || detail.user_id}</span></p>
+          <p>Status: <span className="font-medium uppercase">{detail.status}</span></p>
+          <p>Payment Method: <span className="font-medium">{detail.payment_method || '-'}</span></p>
+          <p>Payment ID: <span className="font-medium break-all">{detail.pi_payment_identifier || '-'}</span></p>
+          <p className="md:col-span-2">TxID: <span className="font-medium break-all">{txid}</span></p>
+          {explorerUrl ? (
+            <p className="md:col-span-2">
+              Explorer:{' '}
+              <a href={explorerUrl} target="_blank" rel="noreferrer" className="font-medium text-[#2563eb] underline">
+                Open blockchain transaction
+              </a>
+            </p>
+          ) : null}
+          <p>Subtotal: <span className="font-medium">{idr(detail.subtotal_idr)}</span></p>
+          <p>Total: <span className="font-medium">{idr(detail.total_idr)}</span></p>
+        </div>
+
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Unit</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(detail.items || []).map((item) => (
+                <tr key={item.id || `${item.product_id}-${item.product_name}`}>
+                  <td>{item.product_name}</td>
+                  <td>{item.qty}</td>
+                  <td>{idr(item.unit_price_idr)}</td>
+                  <td>{idr(item.line_total_idr)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
@@ -171,6 +228,7 @@ function ProductForm({
 export default function App() {
   const [tab, setTab] = useState('dashboard')
   const [error, setError] = useState('')
+
   const [summary, setSummary] = useState(null)
   const [categories, setCategories] = useState([])
 
@@ -209,41 +267,33 @@ export default function App() {
 
   const loadSummary = useCallback(async () => setSummary(await api.getSummary()), [])
   const loadCategories = useCallback(async () => setCategories(await api.listProductCategories()), [])
+
   const loadProducts = useCallback(async () => {
     const r = await api.listProducts({ page: pPage, limit: perPage, search: pSearch, status: pStatus })
     setProducts(r.items || [])
     setPTotal(Number(r.total || 0))
   }, [pPage, pSearch, pStatus])
+
   const loadOrders = useCallback(async () => {
     const r = await api.listOrders({ page: oPage, limit: perPage, search: oSearch, status: oStatus })
     setOrders(r.items || [])
     setOTotal(Number(r.total || 0))
   }, [oPage, oSearch, oStatus])
+
   const loadWallets = useCallback(async () => {
     const r = await api.listPiWallets({ page: wPage, limit: perPage, search: wSearch, status: wStatus })
     setWallets(r.items || [])
     setWTotal(Number(r.total || 0))
   }, [wPage, wSearch, wStatus])
+
   const loadLogs = useCallback(async () => setLogs(await api.listDigiflazzLogs(20)), [])
 
   useEffect(() => {
     setError('')
-    Promise.all([loadSummary(), loadCategories(), loadProducts(), loadOrders(), loadWallets(), loadLogs()]).catch((e) => setError(e.message || 'Load error'))
+    Promise.all([loadSummary(), loadCategories(), loadProducts(), loadOrders(), loadWallets(), loadLogs()]).catch((e) => {
+      setError(e.message || 'Load error')
+    })
   }, [loadSummary, loadCategories, loadProducts, loadOrders, loadWallets, loadLogs])
-
-  const runSync = async (cmd) => {
-    setBusySync(cmd)
-    setSyncResult(null)
-    try {
-      const r = cmd === 'auto-missing' ? await api.autoSyncMissingDigiflazz() : await api.syncDigiflazz(cmd)
-      setSyncResult(r)
-      await loadLogs()
-    } catch (e) {
-      setError(e.message || 'Sync error')
-    } finally {
-      setBusySync('')
-    }
-  }
 
   const openCreateProduct = () => {
     setProductMode('create')
@@ -304,11 +354,13 @@ export default function App() {
         image_url: productForm.image_url || null,
         is_active: Boolean(productForm.is_active),
       }
+
       if (productMode === 'create') {
         await api.createProduct(payload)
       } else {
         await api.updateProduct(editingProductId, payload)
       }
+
       closeProductModal()
       await Promise.all([loadProducts(), loadSummary()])
     } catch (e) {
@@ -320,58 +372,365 @@ export default function App() {
     try {
       await api.updateOrderStatus(id, status)
       await loadOrders()
-      if (orderDetail?.id === id) setOrderDetail(await api.getOrderDetail(id))
+      if (orderDetail?.id === id) {
+        setOrderDetail(await api.getOrderDetail(id))
+      }
     } catch (e) {
       setError(e.message || 'Update status error')
+    }
+  }
+
+  const runSync = async (cmd) => {
+    setBusySync(cmd)
+    setSyncResult(null)
+    try {
+      const r = cmd === 'auto-missing' ? await api.autoSyncMissingDigiflazz() : await api.syncDigiflazz(cmd)
+      setSyncResult(r)
+      await loadLogs()
+    } catch (e) {
+      setError(e.message || 'Sync error')
+    } finally {
+      setBusySync('')
     }
   }
 
   const linkedCount = useMemo(() => wallets.filter((x) => x.is_linked).length, [wallets])
 
   return (
-    <div className="admin-shell mx-auto max-w-[1320px] px-4 pb-8 pt-4 text-[#e7f1ff]">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-[11px] tracking-[0.2em] text-[#7cb0e6]">PI STORE</p>
-          <h1 className="text-[28px] font-extrabold">Admin Panel</h1>
-          <p className="text-[12px] text-[#88a4c4]">{apiBaseUrl}</p>
+    <div className="adminlte-shell">
+      <aside className="admin-sidebar">
+        <div className="mb-5 px-2">
+          <p className="text-[11px] tracking-[0.2em] text-[#9fb4cf]">EXECUTIVE PI</p>
+          <p className="mt-1 text-[19px] font-bold text-white">AdminLTE Style Panel</p>
+          <p className="mt-1 text-[11px] text-[#89a0bd] break-all">{apiBaseUrl}</p>
         </div>
-      </header>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tabs.map((x) => (
-          <button key={x} onClick={() => setTab(x)} className={`rounded-full border px-4 py-1.5 text-[12px] ${tab === x ? 'border-cyan-400/50 bg-cyan-500/20' : 'border-[#35557a] bg-[#0f2238]'}`}>{x}</button>
-        ))}
-      </div>
+        <nav className="space-y-1">
+          {tabs.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setTab(item.key)}
+              className={`admin-nav-btn ${tab === item.key ? 'admin-nav-btn-active' : ''}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
-      {error ? <div className="mb-3 rounded-xl border border-rose-400/40 bg-rose-500/15 px-4 py-2 text-[12px]">{error}</div> : null}
-
-      {tab === 'dashboard' ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="soft-card rounded-2xl p-4"><p className="text-[12px] text-[#9bb0c8]">Products</p><p className="mt-2 text-[24px] font-bold">{summary?.productsTotal ?? '-'}</p></div><div className="soft-card rounded-2xl p-4"><p className="text-[12px] text-[#9bb0c8]">Orders</p><p className="mt-2 text-[24px] font-bold">{summary?.ordersTotal ?? '-'}</p></div><div className="soft-card rounded-2xl p-4"><p className="text-[12px] text-[#9bb0c8]">Users</p><p className="mt-2 text-[24px] font-bold">{summary?.usersTotal ?? '-'}</p></div><div className="soft-card rounded-2xl p-4"><p className="text-[12px] text-[#9bb0c8]">Paid GMV</p><p className="mt-2 text-[24px] font-bold">{idr(summary?.paidGmvIdr)}</p></div></div> : null}
-
-      {tab === 'products' ? (
-        <section className="soft-card rounded-2xl p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2">
-              <input value={pSearch} onChange={(e) => setPSearch(e.target.value)} placeholder="Search product" className="min-w-[220px] rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]" />
-              <select value={pStatus} onChange={(e) => { setPStatus(e.target.value); setPPage(1) }} className="rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"><option value="all">all</option><option value="active">active</option><option value="inactive">inactive</option></select>
-            </div>
-            <button onClick={openCreateProduct} className="rounded-md bg-cyan-500/85 px-2 py-1 text-[10px] font-medium text-[#032329]">+ Tambah Produk</button>
+      <div className="admin-content">
+        <header className="admin-topbar">
+          <div>
+            <h1 className="text-[22px] font-semibold text-[#0f172a]">{tabs.find((x) => x.key === tab)?.label || 'Dashboard'}</h1>
+            <p className="text-[12px] text-[#64748b]">Control products, orders, wallets, and sync tools.</p>
           </div>
-          <div className="overflow-auto rounded-xl border border-[#2f4e74]"><table className="min-w-full text-left text-[12px]"><thead className="bg-[#10243b] text-[#8fb0d2]"><tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Image</th><th className="px-3 py-2">Price</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Action</th></tr></thead><tbody>{products.map((x) => <tr key={x.id} className="border-t border-[#243f60]"><td className="px-3 py-2">{x.name}<div className="text-[11px] text-[#86a2c0]">#{x.id}</div></td><td className="px-3 py-2">{x.image_url ? <img src={mapAssetUrl(x.image_url)} alt={x.name} className="h-10 w-10 rounded object-cover" /> : '-'}</td><td className="px-3 py-2">{idr(x.price_idr)}</td><td className="px-3 py-2">{x.stock}</td><td className="px-3 py-2">{x.is_active ? 'active' : 'inactive'}</td><td className="px-3 py-2"><button onClick={() => openEditProduct(x)} className="rounded-lg border border-[#3d5d82] bg-[#16304d] px-3 py-1 text-[11px]">edit</button></td></tr>)}</tbody></table></div>
-          <div className="mt-3 flex items-center justify-between text-[12px] text-[#88a4c4]"><span>{pPage}/{pPages}</span><div className="flex gap-2"><button onClick={() => setPPage((v) => Math.max(1, v - 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">prev</button><button onClick={() => setPPage((v) => Math.min(pPages, v + 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">next</button></div></div>
-        </section>
-      ) : null}
+        </header>
 
-      {tab === 'orders' ? <section className="soft-card rounded-2xl p-4"><div className="mb-3 flex flex-wrap gap-2"><input value={oSearch} onChange={(e) => setOSearch(e.target.value)} placeholder="Search order/user" className="min-w-[220px] flex-1 rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]" /><select value={oStatus} onChange={(e) => { setOStatus(e.target.value); setOPage(1) }} className="rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"><option value="">all</option>{orderStatuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div><div className="overflow-auto rounded-xl border border-[#2f4e74]"><table className="min-w-full text-left text-[12px]"><thead className="bg-[#10243b] text-[#8fb0d2]"><tr><th className="px-3 py-2">Order</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Detail</th></tr></thead><tbody>{orders.map((x) => <tr key={x.id} className="border-t border-[#243f60]"><td className="px-3 py-2">#{x.id}<div className="text-[11px] text-[#86a2c0]">{dt(x.created_at)}</div></td><td className="px-3 py-2">{x.user_name}<div className="text-[11px] text-[#86a2c0]">{x.user_email}</div></td><td className="px-3 py-2">{idr(x.total_idr)}</td><td className="px-3 py-2"><select value={x.status} onChange={(e) => updateOrderStatus(x.id, e.target.value)} className="rounded-lg border border-[#3d5d82] bg-[#16304d] px-2 py-1 text-[11px]">{orderStatuses.map((s) => <option key={s} value={s}>{s}</option>)}</select></td><td className="px-3 py-2"><button onClick={async () => setOrderDetail(await api.getOrderDetail(x.id))} className="rounded-lg border border-[#3d5d82] bg-[#16304d] px-3 py-1 text-[11px]">view</button></td></tr>)}</tbody></table></div><div className="mt-3 flex items-center justify-between text-[12px] text-[#88a4c4]"><span>{oPage}/{oPages}</span><div className="flex gap-2"><button onClick={() => setOPage((v) => Math.max(1, v - 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">prev</button><button onClick={() => setOPage((v) => Math.min(oPages, v + 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">next</button></div></div></section> : null}
+        <main className="space-y-4">
+          {error ? <div className="admin-alert">{error}</div> : null}
 
-      {tab === 'wallets' ? <section className="soft-card rounded-2xl p-4"><div className="mb-2 text-[12px] text-[#88a4c4]">Linked this page: {linkedCount}/{wallets.length}</div><div className="mb-3 flex flex-wrap gap-2"><input value={wSearch} onChange={(e) => setWSearch(e.target.value)} placeholder="Search wallet/user" className="min-w-[220px] flex-1 rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]" /><select value={wStatus} onChange={(e) => { setWStatus(e.target.value); setWPage(1) }} className="rounded-xl border border-[#35557a] bg-[#0b1a2c] px-3 py-2 text-[13px]"><option value="all">all</option><option value="linked">linked</option><option value="unlinked">unlinked</option></select></div><div className="overflow-auto rounded-xl border border-[#2f4e74]"><table className="min-w-full text-left text-[12px]"><thead className="bg-[#10243b] text-[#8fb0d2]"><tr><th className="px-3 py-2">User</th><th className="px-3 py-2">Balance</th><th className="px-3 py-2">Pi UID</th><th className="px-3 py-2">Wallet</th></tr></thead><tbody>{wallets.map((x) => <tr key={x.id} className="border-t border-[#243f60]"><td className="px-3 py-2">{x.name}<div className="text-[11px] text-[#86a2c0]">{x.email}</div></td><td className="px-3 py-2">{idr(x.idr_balance)}<div className="text-[11px] text-[#86a2c0]">Pi {Number(x.pi_balance || 0)}</div></td><td className="px-3 py-2">{x.pi_uid || '-'}</td><td className="px-3 py-2 max-w-[280px]"><span className="break-all text-[11px]">{x.wallet_address || '-'}</span></td></tr>)}</tbody></table></div><div className="mt-3 flex items-center justify-between text-[12px] text-[#88a4c4]"><span>{wPage}/{wPages}</span><div className="flex gap-2"><button onClick={() => setWPage((v) => Math.max(1, v - 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">prev</button><button onClick={() => setWPage((v) => Math.min(wPages, v + 1))} className="rounded-lg border border-[#3d5d82] px-3 py-1">next</button></div></div></section> : null}
+          {tab === 'dashboard' ? (
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="admin-stat-card">
+                <p className="admin-stat-label">Products</p>
+                <p className="admin-stat-value">{summary?.productsTotal ?? '-'}</p>
+              </div>
+              <div className="admin-stat-card">
+                <p className="admin-stat-label">Orders</p>
+                <p className="admin-stat-value">{summary?.ordersTotal ?? '-'}</p>
+              </div>
+              <div className="admin-stat-card">
+                <p className="admin-stat-label">Users</p>
+                <p className="admin-stat-value">{summary?.usersTotal ?? '-'}</p>
+              </div>
+              <div className="admin-stat-card">
+                <p className="admin-stat-label">Paid GMV</p>
+                <p className="admin-stat-value">{idr(summary?.paidGmvIdr)}</p>
+              </div>
+            </section>
+          ) : null}
 
-      {tab === 'digiflazz' ? <section className="soft-card rounded-2xl p-4"><div className="mb-3 flex flex-wrap gap-2"><button onClick={() => runSync('all')} disabled={Boolean(busySync)} className="rounded-xl bg-cyan-500/85 px-4 py-2 text-[12px] font-bold text-[#032329]">{busySync === 'all' ? 'syncing...' : 'sync all'}</button><button onClick={() => runSync('prepaid')} disabled={Boolean(busySync)} className="rounded-xl border border-[#3d5d82] bg-[#16304d] px-4 py-2 text-[12px]">prepaid</button><button onClick={() => runSync('pasca')} disabled={Boolean(busySync)} className="rounded-xl border border-[#3d5d82] bg-[#16304d] px-4 py-2 text-[12px]">pasca</button><button onClick={() => runSync('auto-missing')} disabled={Boolean(busySync)} className="rounded-xl border border-[#3d5d82] bg-[#16304d] px-4 py-2 text-[12px]">auto-missing</button></div>{syncResult ? <pre className="mb-3 overflow-auto rounded-xl border border-[#35557a] bg-[#0b1a2c] p-3 text-[11px] text-[#a7c8e8]">{JSON.stringify(syncResult, null, 2)}</pre> : null}<div className="overflow-auto rounded-xl border border-[#2f4e74]"><table className="min-w-full text-left text-[12px]"><thead className="bg-[#10243b] text-[#8fb0d2]"><tr><th className="px-3 py-2">time</th><th className="px-3 py-2">type</th><th className="px-3 py-2">status</th><th className="px-3 py-2">records</th><th className="px-3 py-2">notes</th></tr></thead><tbody>{logs.map((x) => <tr key={x.id} className="border-t border-[#243f60]"><td className="px-3 py-2">{dt(x.finished_at || x.started_at)}</td><td className="px-3 py-2">{x.sync_type}</td><td className="px-3 py-2">{x.status}</td><td className="px-3 py-2">{Number(x.total_records || 0)}</td><td className="px-3 py-2">{x.notes || '-'}</td></tr>)}</tbody></table></div></section> : null}
+          {tab === 'products' ? (
+            <section className="admin-panel-card p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={pSearch}
+                    onChange={(e) => setPSearch(e.target.value)}
+                    placeholder="Search product"
+                    className="admin-input min-w-[220px]"
+                  />
+                  <select
+                    value={pStatus}
+                    onChange={(e) => {
+                      setPStatus(e.target.value)
+                      setPPage(1)
+                    }}
+                    className="admin-input min-w-[120px]"
+                  >
+                    <option value="all">all</option>
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                </div>
+                <button onClick={openCreateProduct} className="admin-btn admin-btn-primary">+ Tambah Produk</button>
+              </div>
+
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Image</th>
+                      <th>Price</th>
+                      <th>Stock</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <p className="font-medium text-[#0f172a]">{item.name}</p>
+                          <p className="text-[11px] text-[#64748b]">#{item.id}</p>
+                        </td>
+                        <td>
+                          {item.image_url ? (
+                            <img src={mapAssetUrl(item.image_url)} alt={item.name} className="h-10 w-10 rounded object-cover" />
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td>{idr(item.price_idr)}</td>
+                        <td>{item.stock}</td>
+                        <td>
+                          <span className={`admin-pill ${item.is_active ? 'admin-pill-success' : 'admin-pill-muted'}`}>
+                            {item.is_active ? 'active' : 'inactive'}
+                          </span>
+                        </td>
+                        <td>
+                          <button onClick={() => openEditProduct(item)} className="admin-btn admin-btn-light">Edit</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-[12px] text-[#64748b]">
+                <span>{pPage}/{pPages}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setPPage((v) => Math.max(1, v - 1))} className="admin-btn admin-btn-light">Prev</button>
+                  <button onClick={() => setPPage((v) => Math.min(pPages, v + 1))} className="admin-btn admin-btn-light">Next</button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === 'orders' ? (
+            <section className="admin-panel-card p-4">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <input
+                  value={oSearch}
+                  onChange={(e) => setOSearch(e.target.value)}
+                  placeholder="Search order/user"
+                  className="admin-input min-w-[240px] flex-1"
+                />
+                <select
+                  value={oStatus}
+                  onChange={(e) => {
+                    setOStatus(e.target.value)
+                    setOPage(1)
+                  }}
+                  className="admin-input min-w-[160px]"
+                >
+                  <option value="">all</option>
+                  {orderStatuses.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>User</th>
+                      <th>Total</th>
+                      <th>Payment ID</th>
+                      <th>TxID</th>
+                      <th>Status</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <p className="font-medium text-[#0f172a]">#{item.id}</p>
+                          <p className="text-[11px] text-[#64748b]">{dt(item.created_at)}</p>
+                        </td>
+                        <td>
+                          <p className="font-medium text-[#0f172a]">{item.user_name}</p>
+                          <p className="text-[11px] text-[#64748b]">{item.user_email}</p>
+                        </td>
+                        <td>{idr(item.total_idr)}</td>
+                        <td className="max-w-[160px]"><span className="break-all text-[11px]">{item.pi_payment_identifier || '-'}</span></td>
+                        <td className="max-w-[170px]">
+                          {item.pi_txid ? (
+                            <a
+                              className="break-all text-[11px] text-[#2563eb] underline"
+                              href={`https://blockexplorer.minepi.com/mainnet/tx/${item.pi_txid}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {item.pi_txid}
+                            </a>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td>
+                          <select value={item.status} onChange={(e) => updateOrderStatus(item.id, e.target.value)} className="admin-input min-w-[140px]">
+                            {orderStatuses.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <button onClick={async () => setOrderDetail(await api.getOrderDetail(item.id))} className="admin-btn admin-btn-light">View</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-[12px] text-[#64748b]">
+                <span>{oPage}/{oPages}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setOPage((v) => Math.max(1, v - 1))} className="admin-btn admin-btn-light">Prev</button>
+                  <button onClick={() => setOPage((v) => Math.min(oPages, v + 1))} className="admin-btn admin-btn-light">Next</button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === 'wallets' ? (
+            <section className="admin-panel-card p-4">
+              <div className="mb-2 text-[12px] text-[#64748b]">Linked this page: {linkedCount}/{wallets.length}</div>
+
+              <div className="mb-3 flex flex-wrap gap-2">
+                <input
+                  value={wSearch}
+                  onChange={(e) => setWSearch(e.target.value)}
+                  placeholder="Search wallet/user"
+                  className="admin-input min-w-[240px] flex-1"
+                />
+                <select
+                  value={wStatus}
+                  onChange={(e) => {
+                    setWStatus(e.target.value)
+                    setWPage(1)
+                  }}
+                  className="admin-input min-w-[160px]"
+                >
+                  <option value="all">all</option>
+                  <option value="linked">linked</option>
+                  <option value="unlinked">unlinked</option>
+                </select>
+              </div>
+
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Balance</th>
+                      <th>Pi UID</th>
+                      <th>Wallet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wallets.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <p className="font-medium text-[#0f172a]">{item.name}</p>
+                          <p className="text-[11px] text-[#64748b]">{item.email}</p>
+                        </td>
+                        <td>
+                          <p>{idr(item.idr_balance)}</p>
+                          <p className="text-[11px] text-[#64748b]">Pi {Number(item.pi_balance || 0)}</p>
+                        </td>
+                        <td><span className="break-all">{item.pi_uid || '-'}</span></td>
+                        <td className="max-w-[280px]"><span className="break-all text-[11px]">{item.wallet_address || '-'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-[12px] text-[#64748b]">
+                <span>{wPage}/{wPages}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setWPage((v) => Math.max(1, v - 1))} className="admin-btn admin-btn-light">Prev</button>
+                  <button onClick={() => setWPage((v) => Math.min(wPages, v + 1))} className="admin-btn admin-btn-light">Next</button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === 'digiflazz' ? (
+            <section className="admin-panel-card p-4">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button onClick={() => runSync('all')} disabled={Boolean(busySync)} className="admin-btn admin-btn-primary">
+                  {busySync === 'all' ? 'Syncing...' : 'Sync All'}
+                </button>
+                <button onClick={() => runSync('prepaid')} disabled={Boolean(busySync)} className="admin-btn admin-btn-light">Prepaid</button>
+                <button onClick={() => runSync('pasca')} disabled={Boolean(busySync)} className="admin-btn admin-btn-light">Pasca</button>
+                <button onClick={() => runSync('auto-missing')} disabled={Boolean(busySync)} className="admin-btn admin-btn-light">Auto Missing</button>
+              </div>
+
+              {syncResult ? (
+                <pre className="mb-3 overflow-auto rounded-xl border border-[#dbe4f0] bg-[#f8fbff] p-3 text-[11px] text-[#0f172a]">
+                  {JSON.stringify(syncResult, null, 2)}
+                </pre>
+              ) : null}
+
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Records</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.map((item) => (
+                      <tr key={item.id}>
+                        <td>{dt(item.finished_at || item.started_at)}</td>
+                        <td>{item.sync_type}</td>
+                        <td>{item.status}</td>
+                        <td>{Number(item.total_records || 0)}</td>
+                        <td>{item.notes || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+        </main>
+      </div>
 
       {productMode ? (
         <ProductForm
           title={productMode === 'create' ? 'Tambah Produk' : `Edit Produk #${editingProductId}`}
-          submitText="Simpan"
           categories={categories}
           form={productForm}
           setForm={setProductForm}
@@ -382,15 +741,7 @@ export default function App() {
         />
       ) : null}
 
-      {orderDetail ? (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/60 p-2 md:items-center">
-          <div className="soft-card w-full max-w-[680px] rounded-2xl p-4">
-            <div className="mb-2 flex items-center justify-between"><h3 className="text-[16px] font-bold">Order #{orderDetail.id}</h3><button onClick={() => setOrderDetail(null)} className="rounded-lg border border-[#3d5d82] px-2 py-1 text-[12px]">close</button></div>
-            <div className="mb-3 grid gap-2 text-[12px] sm:grid-cols-2"><p>User: {orderDetail.user_name}</p><p>Status: {orderDetail.status}</p><p>Subtotal: {idr(orderDetail.subtotal_idr)}</p><p>Total: {idr(orderDetail.total_idr)}</p></div>
-            <div className="overflow-auto rounded-xl border border-[#2f4e74]"><table className="min-w-full text-left text-[12px]"><thead className="bg-[#10243b] text-[#8fb0d2]"><tr><th className="px-3 py-2">Product</th><th className="px-3 py-2">Qty</th><th className="px-3 py-2">Unit</th><th className="px-3 py-2">Total</th></tr></thead><tbody>{(orderDetail.items || []).map((x) => <tr key={x.id} className="border-t border-[#243f60]"><td className="px-3 py-2">{x.product_name}</td><td className="px-3 py-2">{x.qty}</td><td className="px-3 py-2">{idr(x.unit_price_idr)}</td><td className="px-3 py-2">{idr(x.line_total_idr)}</td></tr>)}</tbody></table></div>
-          </div>
-        </div>
-      ) : null}
+      <OrderDetailModal detail={orderDetail} onClose={() => setOrderDetail(null)} />
     </div>
   )
 }

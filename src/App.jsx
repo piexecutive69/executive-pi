@@ -17,6 +17,7 @@ import PpobPrepaidPurchasePage from './pages/PpobPrepaidPurchasePage'
 import PpobPage from './pages/PpobPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import PaymentReturnPage from './pages/PaymentReturnPage'
+import PiBrowserRequiredPage from './pages/PiBrowserRequiredPage'
 import ProfileMenuPage from './pages/ProfileMenuPage'
 import ProfilePage from './pages/ProfilePage'
 import RegisterPage from './pages/RegisterPage'
@@ -146,6 +147,13 @@ export default function App() {
   }, [user?.id, location.pathname])
 
   const showBottomNav = new Set(['/', '/ppob', '/cart', '/profile']).has(location.pathname)
+  if (location.pathname === '/pi-browser-required') {
+    return (
+      <div className="min-h-screen w-full bg-[radial-gradient(1100px_circle_at_12%_8%,#1b2f64_0%,transparent_45%),radial-gradient(860px_circle_at_88%_2%,#274786_0%,transparent_34%),linear-gradient(180deg,#060d23_0%,#050b1c_58%,#040814_100%)]">
+        <PiBrowserRequiredPage />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen w-full bg-[radial-gradient(1100px_circle_at_12%_8%,#1b2f64_0%,transparent_45%),radial-gradient(860px_circle_at_88%_2%,#274786_0%,transparent_34%),linear-gradient(180deg,#060d23_0%,#050b1c_58%,#040814_100%)]">
@@ -198,6 +206,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage onLogin={onLogin} />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/payment/return" element={<PaymentReturnPage />} />
+            <Route path="/pi-browser-required" element={<PiBrowserRequiredPage />} />
             <Route
               path="/product/:productId"
               element={

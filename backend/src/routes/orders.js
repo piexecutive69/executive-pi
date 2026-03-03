@@ -38,6 +38,14 @@ function toMoneyPi(value) {
   return Number(num.toFixed(4))
 }
 
+async function runSchemaQuery(connOrPool, sql) {
+  try {
+    await connOrPool.query(sql)
+  } catch {
+    // Ignore duplicate/missing column/index errors in rolling migration.
+  }
+}
+
 async function hasCompletedShippingAddress(conn, userId) {
   const [rows] = await conn.query(
     `SELECT user_id
@@ -226,6 +234,19 @@ async function getPiGatewayId(conn) {
 }
 
 export async function orderRoutes(app) {
+  await runSchemaQuery(
+    app.mysql,
+    "ALTER TABLE orders ADD COLUMN pi_payment_identifier VARCHAR(140) NULL AFTER payment_method",
+  )
+  await runSchemaQuery(
+    app.mysql,
+    "ALTER TABLE orders ADD COLUMN pi_txid VARCHAR(140) NULL AFTER pi_payment_identifier",
+  )
+  await runSchemaQuery(
+    app.mysql,
+    "ALTER TABLE payment_transactions ADD COLUMN blockchain_txid VARCHAR(140) NULL AFTER external_reference",
+  )
+
   await app.mysql.query(
     `CREATE TABLE IF NOT EXISTS pi_payment_records (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -696,6 +717,12 @@ export async function orderRoutes(app) {
             paymentTx.id,
           ],
         )
+        await conn.query(
+          `UPDATE orders
+           SET pi_payment_identifier = COALESCE(?, pi_payment_identifier), updated_at = NOW()
+           WHERE id = ?`,
+          [paymentId, orderId],
+        )
 
         await upsertPiPaymentRecord(conn, {
           orderId,
@@ -804,6 +831,10 @@ export async function orderRoutes(app) {
 
         const piPayment = await getPiPayment(paymentId, piContext)
         const completeResult = await completePiPayment(paymentId, txid, piContext)
+        const blockchainTxid =
+          toNullableString(txid) ||
+          toNullableString(piPayment?.transaction?.txid) ||
+          toNullableString(completeResult?.transaction?.txid)
         await syncUserWalletFromPiPayment(conn, {
           userId: Number(target.user_id),
           piPayment,
@@ -815,10 +846,11 @@ export async function orderRoutes(app) {
 
         await conn.query(
           `UPDATE payment_transactions
-           SET external_reference = ?, status = 'paid', response_payload = ?, paid_at = NOW(), updated_at = NOW()
+           SET external_reference = ?, blockchain_txid = ?, status = 'paid', response_payload = ?, paid_at = NOW(), updated_at = NOW()
            WHERE id = ?`,
           [
             paymentId,
+            blockchainTxid,
             JSON.stringify({
               payment: piPayment,
               complete: completeResult,
@@ -827,7 +859,15 @@ export async function orderRoutes(app) {
             target.payment_tx_id,
           ],
         )
-        await conn.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = ?", [orderId])
+        await conn.query(
+          `UPDATE orders
+           SET status = 'paid',
+               pi_payment_identifier = COALESCE(?, pi_payment_identifier),
+               pi_txid = COALESCE(?, pi_txid),
+               updated_at = NOW()
+           WHERE id = ?`,
+          [paymentId, blockchainTxid, orderId],
+        )
         await conn.query('DELETE FROM cart_items WHERE user_id = ?', [target.user_id])
 
         await upsertPiPaymentRecord(conn, {
@@ -1067,17 +1107,19 @@ export async function orderRoutes(app) {
             type: 'array',
             items: {
               type: 'object',
-              properties: {
-                id: { type: 'integer' },
-                user_id: { type: 'integer' },
-                status: { type: 'string' },
-                subtotal_idr: { type: 'number' },
-                shipping_idr: { type: 'number' },
-                total_idr: { type: 'number' },
-                payment_method: { type: 'string' },
-                shipping_address: { type: ['string', 'null'] },
-                created_at: { type: 'string' },
-              },
+            properties: {
+              id: { type: 'integer' },
+              user_id: { type: 'integer' },
+              status: { type: 'string' },
+              subtotal_idr: { type: 'number' },
+              shipping_idr: { type: 'number' },
+              total_idr: { type: 'number' },
+              payment_method: { type: 'string' },
+              pi_payment_identifier: { type: ['string', 'null'] },
+              pi_txid: { type: ['string', 'null'] },
+              shipping_address: { type: ['string', 'null'] },
+              created_at: { type: 'string' },
+            },
             },
           },
           400: { type: 'object', properties: { message: { type: 'string' } } },
@@ -1091,7 +1133,7 @@ export async function orderRoutes(app) {
     }
 
     const [rows] = await app.mysql.query(
-      `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, shipping_address, created_at
+      `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, pi_payment_identifier, pi_txid, shipping_address, created_at
        FROM orders
        WHERE user_id = ?
        ORDER BY id DESC`,
@@ -1133,6 +1175,8 @@ export async function orderRoutes(app) {
               shipping_idr: { type: 'number' },
               total_idr: { type: 'number' },
               payment_method: { type: 'string' },
+              pi_payment_identifier: { type: ['string', 'null'] },
+              pi_txid: { type: ['string', 'null'] },
               shipping_address: { type: ['string', 'null'] },
               created_at: { type: 'string' },
               items: {
@@ -1163,7 +1207,7 @@ export async function orderRoutes(app) {
     }
 
     const [orders] = await app.mysql.query(
-      `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, shipping_address, created_at
+      `SELECT id, user_id, status, subtotal_idr, shipping_idr, total_idr, payment_method, pi_payment_identifier, pi_txid, shipping_address, created_at
        FROM orders
        WHERE id = ? AND user_id = ?`,
       [orderId, userId],
