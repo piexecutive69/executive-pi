@@ -69,6 +69,7 @@ const normalizeSyncType = (value) => {
   if (v.includes('pasca') || v.includes('postpaid')) return 'pasca'
   return ''
 }
+const isMemberLevel = (code) => String(code || '').trim().toLowerCase() === 'member'
 
 function normalizeConfigPayload(data) {
   const levels = Array.isArray(data?.levels)
@@ -131,7 +132,8 @@ function normalizeConfigPayload(data) {
   const bonuses = []
   for (const level of levels) {
     for (const ruleType of ['transaction_bonus', 'upgrade_bonus']) {
-      for (const depth of [1, 2, 3]) {
+      const depthOptions = ruleType === 'upgrade_bonus' ? [1] : [1, 2, 3]
+      for (const depth of depthOptions) {
         const found = bonusMap.get(`${level.level_id}:${ruleType}:${depth}`)
         bonuses.push({
           id: Number(found?.id || 0),
@@ -782,7 +784,7 @@ export default function App() {
           id: Number(item.id || 0),
           for_level_id: Number(item.for_level_id),
           rule_type: item.rule_type,
-          depth: Number(item.depth),
+          depth: item.rule_type === 'upgrade_bonus' ? 1 : Number(item.depth),
           bonus_mode: item.bonus_mode,
           bonus_value: Number(item.bonus_value || 0),
           bonus_currency: item.bonus_currency,
@@ -812,8 +814,18 @@ export default function App() {
     [configForm.markups, markupTab],
   )
   const filteredBonuses = useMemo(
-    () => configForm.bonuses.filter((item) => item.rule_type === bonusTab),
+    () =>
+      configForm.bonuses.filter(
+        (item) =>
+          item.rule_type === bonusTab &&
+          !isMemberLevel(item.level_code) &&
+          (bonusTab !== 'upgrade_bonus' || Number(item.depth) === 1),
+      ),
     [configForm.bonuses, bonusTab],
+  )
+  const upgradeLevels = useMemo(
+    () => configForm.levels.filter((item) => !isMemberLevel(item.code)),
+    [configForm.levels],
   )
 
   const toggleProductSort = (key) => {
@@ -1495,7 +1507,7 @@ export default function App() {
                     <table className="admin-table min-w-[760px]">
                       <thead><tr><th>Level</th><th>Upgrade Fee IDR</th><th>Upgrade Fee PI</th><th>Active</th></tr></thead>
                       <tbody>
-                        {configForm.levels.map((item) => (
+                        {upgradeLevels.map((item) => (
                           <tr key={`level-${item.level_id}`}>
                             <td><p className="font-medium text-[#0f172a]">{item.display_name}</p><p className="text-[11px] text-[#64748b]">{item.code}</p></td>
                             <td><input type="number" min="0" value={item.upgrade_fee_idr} onChange={(e) => updateLevelConfig(item.level_id, 'upgrade_fee_idr', e.target.value)} className="admin-input min-w-[150px]" /></td>
@@ -1513,7 +1525,9 @@ export default function App() {
                 <div className="admin-panel-card p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-[15px] font-semibold text-[#0f172a]">Affiliate Bonus Rules</h3>
-                    <p className="text-[12px] text-[#64748b]">Depth 1-3</p>
+                    <p className="text-[12px] text-[#64748b]">
+                      {bonusTab === 'upgrade_bonus' ? 'Upgrade bonus: sekali, depth 1 saja' : 'Depth 1-3'}
+                    </p>
                   </div>
                   <div className="config-tabs mb-3">
                     <button onClick={() => setBonusTab('transaction_bonus')} className={`config-tab-btn ${bonusTab === 'transaction_bonus' ? 'config-tab-btn-active' : ''}`}>Transaction Bonus</button>
@@ -1526,7 +1540,13 @@ export default function App() {
                         {filteredBonuses.map((item, idx) => (
                           <tr key={`bonus-${item.for_level_id}-${item.rule_type}-${item.depth}-${idx}`}>
                             <td><p className="font-medium text-[#0f172a]">{item.level_name}</p><p className="text-[11px] text-[#64748b]">{item.level_code}</p></td>
-                            <td><select value={item.depth} onChange={(e) => updateBonusConfig(item.for_level_id, item.rule_type, item.depth, 'depth', Number(e.target.value))} className="admin-input min-w-[90px]"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></td>
+                            <td>
+                              {item.rule_type === 'upgrade_bonus' ? (
+                                <span className="text-[13px] font-medium text-[#0f172a]">1</span>
+                              ) : (
+                                <select value={item.depth} onChange={(e) => updateBonusConfig(item.for_level_id, item.rule_type, item.depth, 'depth', Number(e.target.value))} className="admin-input min-w-[90px]"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select>
+                              )}
+                            </td>
                             <td><select value={item.bonus_mode} onChange={(e) => updateBonusConfig(item.for_level_id, item.rule_type, item.depth, 'bonus_mode', e.target.value)} className="admin-input min-w-[130px]"><option value="fixed">fixed</option><option value="percentage">percentage</option></select></td>
                             <td><input type="number" min="0" step="0.0001" value={item.bonus_value} onChange={(e) => updateBonusConfig(item.for_level_id, item.rule_type, item.depth, 'bonus_value', e.target.value)} className="admin-input min-w-[130px]" /></td>
                               <td><select value="idr" disabled className="admin-input min-w-[110px]"><option value="idr">idr</option></select></td>

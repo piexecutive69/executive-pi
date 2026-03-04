@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import BottomNav from './components/BottomNav'
-import Drawer from './components/Drawer'
 import Header from './components/Header'
 import ScrollToTop from './components/ScrollToTop'
 import { categories as categorySeed, heroSlides } from './data/storeData'
@@ -26,7 +25,6 @@ const SESSION_USER_ID_KEY = 'pi_store_user_id'
 
 export default function App() {
   const location = useLocation()
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [products, setProducts] = useState([])
   const [user, setUser] = useState(null)
   const [wishlistItems, setWishlistItems] = useState([])
@@ -42,13 +40,6 @@ export default function App() {
     window.localStorage.removeItem(SESSION_USER_ID_KEY)
     clearPiSdkSession()
   }
-
-  useEffect(() => {
-    document.body.style.overflow = drawerOpen ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [drawerOpen])
 
   useEffect(() => {
     let active = true
@@ -180,7 +171,6 @@ export default function App() {
       <ScrollToTop />
       <div className="pi-browser-frame min-h-screen w-full bg-[#0a142d]/92 px-4 pb-4 pt-2">
         <Header
-          onOpenDrawer={() => setDrawerOpen(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           cartCount={cartCount}
@@ -244,7 +234,6 @@ export default function App() {
         </main>
 
         {showBottomNav ? <BottomNav /> : null}
-        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} user={user} onLogout={onLogout} />
         <ToastContainer
           position="top-center"
           autoClose={2500}

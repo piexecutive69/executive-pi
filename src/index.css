@@ -8,6 +8,7 @@
   --android-nav-inset: 0px;
   --app-bottom-nav-height: 90px;
   --app-bottom-nav-total-offset: calc(var(--app-bottom-nav-offset) + var(--app-bottom-nav-safe));
+  --app-bottom-nav-domain-shift: 0px;
 }
 
 html[data-pi-browser="true"] {
@@ -22,12 +23,16 @@ html[data-pi-browser="true"][data-android="true"] {
   --app-bottom-nav-offset: calc(68px + var(--android-nav-inset));
 }
 
+html[data-host-mode="toko"] {
+  --app-bottom-nav-domain-shift: -20px;
+}
+
 body {
   margin: 0;
 }
 
 .pi-bottom-nav {
-  bottom: max(0px, calc(var(--app-bottom-nav-safe) - 2px));
+  bottom: max(0px, calc(var(--app-bottom-nav-safe) + 38px + var(--app-bottom-nav-domain-shift)));
   padding-bottom: max(0px, var(--app-bottom-nav-safe));
 }
 

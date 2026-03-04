@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { formatIDR, formatPi } from '../lib/format'
 import SeoMeta from '../components/SeoMeta'
 import LoginRequiredCard from '../components/LoginRequiredCard'
+import { isPiSdkEnabledHost } from '../lib/domainMode'
 import { authenticateWithPiSdk, createPiSdkPayment, getPiSdkSession, hasRequiredPiScopes, savePiSdkSession } from '../lib/piSdk'
 import { isAddressComplete } from '../lib/address'
 
@@ -97,6 +98,12 @@ export default function CartPage({ userId, onRefreshUser, onCartChanged }) {
       }
 
       if (paymentMethod === 'pi_sdk') {
+        if (!isPiSdkEnabledHost()) {
+          const msg = 'Pi tidak bisa dipakai di domain ini. Gunakan checkout Saldo IDR.'
+          setError(msg)
+          toast.warn(msg)
+          return
+        }
         const flowId = createIdempotencyKey(`pi-order-u${userId}`)
         let piSession = getPiSdkSession()
         if (!piSession?.accessToken || !hasRequiredPiScopes(piSession)) {

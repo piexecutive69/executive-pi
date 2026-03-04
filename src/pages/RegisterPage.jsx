@@ -1,23 +1,32 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import SeoMeta from '../components/SeoMeta'
 import { api } from '../lib/api'
+import { isPiSdkEnabledHost } from '../lib/domainMode'
 import { useI18n } from '../lib/i18n'
 import { authenticateWithPiSdk, savePiSdkSession } from '../lib/piSdk'
 
 export default function RegisterPage() {
   const { lang, t } = useI18n()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [form, setForm] = useState({
     name: '',
     email: '',
     phone: '',
     password: '',
+    referralCode: '',
   })
   const [loading, setLoading] = useState(false)
 
   const onChange = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+
+  useEffect(() => {
+    const refCode = String(searchParams.get('ref') || '').trim()
+    if (!refCode) return
+    setForm((prev) => ({ ...prev, referralCode: refCode }))
+  }, [searchParams])
 
   const submit = async () => {
     if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
@@ -31,7 +40,7 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       let piSession = null
-      if (typeof window !== 'undefined' && window.Pi?.authenticate) {
+      if (isPiSdkEnabledHost() && typeof window !== 'undefined' && window.Pi?.authenticate) {
         try {
           piSession = await authenticateWithPiSdk()
         } catch (piError) {
@@ -43,6 +52,7 @@ export default function RegisterPage() {
         email: form.email.trim(),
         phone: form.phone.trim(),
         password: form.password,
+        referralCode: form.referralCode.trim() || null,
         piAuth: piSession
           ? {
               uid: piSession.uid,
@@ -120,6 +130,13 @@ export default function RegisterPage() {
             value={form.password}
             onChange={(e) => onChange('password', e.target.value)}
             placeholder="Password"
+            className="h-10 w-full rounded-full border border-[#6e8dc8]/25 bg-[#162a57] px-4 text-[13px] text-[#c4d3f2] outline-none placeholder:text-[#86a0d2]"
+          />
+          <input
+            type="text"
+            value={form.referralCode}
+            onChange={(e) => onChange('referralCode', e.target.value)}
+            placeholder={lang === 'en' ? 'Referral Code (Optional)' : 'Kode Referral (Opsional)'}
             className="h-10 w-full rounded-full border border-[#6e8dc8]/25 bg-[#162a57] px-4 text-[13px] text-[#c4d3f2] outline-none placeholder:text-[#86a0d2]"
           />
           <button

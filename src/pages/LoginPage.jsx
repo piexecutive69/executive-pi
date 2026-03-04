@@ -4,6 +4,7 @@ import { toast } from 'react-toastify'
 import SeoMeta from '../components/SeoMeta'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { isPiSdkEnabledHost } from '../lib/domainMode'
 import { authenticateWithPiSdk, savePiSdkSession } from '../lib/piSdk'
 
 export default function LoginPage({ onLogin }) {
@@ -22,7 +23,7 @@ export default function LoginPage({ onLogin }) {
     setLoading(true)
     try {
       let piSession = null
-      if (typeof window !== 'undefined' && window.Pi?.authenticate) {
+      if (isPiSdkEnabledHost() && typeof window !== 'undefined' && window.Pi?.authenticate) {
         try {
           piSession = await authenticateWithPiSdk()
         } catch (piError) {

@@ -16,6 +16,7 @@ const menuMeta = {
   notifications: { idTitle: 'Notifikasi', enTitle: 'Notifications' },
   settings: { idTitle: 'Pengaturan', enTitle: 'Settings' },
   payments: { idTitle: 'Metode Pembayaran', enTitle: 'Payment Methods' },
+  referral: { idTitle: 'Share Referral', enTitle: 'Share Referral' },
   privacy: { idTitle: 'Kebijakan Privasi', enTitle: 'Privacy Policy' },
   terms: { idTitle: 'Syarat & Ketentuan', enTitle: 'Terms & Conditions' },
   help: { idTitle: 'Pusat Bantuan', enTitle: 'Help Center' },
@@ -34,9 +35,18 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
   const [upgradeLoading, setUpgradeLoading] = useState(false)
   const [upgradingCode, setUpgradingCode] = useState('')
   const [topupQris, setTopupQris] = useState({ open: false, url: '', reference: '', qrString: '' })
+  const membershipCode = String(user?.membership_code || 'member').toLowerCase()
+  const referralEligible = ['reseller', 'agen', 'distributor'].includes(membershipCode)
+  const referralCode = userId ? `EP${userId}` : ''
+  const referralLink = useMemo(() => {
+    if (!userId || typeof window === 'undefined') return ''
+    const base = window.location.origin
+    return `${base}/register?ref=${encodeURIComponent(referralCode)}`
+  }, [userId, referralCode])
 
   const currentMenu = useMemo(() => menuMeta[menuKey] || null, [menuKey])
   const currentMenuTitle = currentMenu ? (lang === 'en' ? currentMenu.enTitle : currentMenu.idTitle) : ''
+  const isPublicMenu = ['privacy', 'terms', 'help'].includes(String(menuKey || '').toLowerCase())
 
   useEffect(() => {
     if (!userId || menuKey !== 'orders') return
@@ -104,6 +114,12 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
       setUpgradingCode('')
     }
   }
+  const formatBonusValue = (bonus) => {
+    const mode = String(bonus?.bonus_mode || 'fixed').toLowerCase()
+    const value = Number(bonus?.bonus_value || 0)
+    if (mode === 'percentage') return `${value}%`
+    return formatIDR(value)
+  }
 
   const topup = async () => {
     if (Number(topupAmount) <= 0) {
@@ -151,7 +167,7 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
         <span>{currentMenuTitle}</span>
       </button>
 
-      {!userId ? <LoginRequiredCard /> : null}
+      {!userId && !isPublicMenu ? <LoginRequiredCard /> : null}
 
       {userId && menuKey === 'orders' ? (
         <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 shadow-[0_1px_4px_rgba(0,0,0,.24)]">
@@ -331,12 +347,126 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
                   ))}
                 </div>
               )}
+
+              <div className="mt-4">
+                <p className="mb-2 text-[13px] font-medium text-[#e3ebfb]">
+                  {lang === 'en' ? 'Grade Benefit Details' : 'Detail Benefit Per Grade'}
+                </p>
+                <div className="space-y-2">
+                  {(membershipData?.grade_details || []).map((grade) => (
+                    <div key={`grade-${grade.code}`} className="rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[13px] font-semibold uppercase text-[#e3ebfb]">{grade.display_name}</p>
+                        <p className="text-[11px] text-[#9fd0ff]">{lang === 'en' ? 'Upgrade Fee:' : 'Biaya Upgrade:'} {formatIDR(grade.upgrade_fee_idr)}</p>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#10224a] px-2 py-2">
+                          <p className="text-[11px] font-medium text-[#cfe1ff]">{lang === 'en' ? 'Referral Bonus' : 'Bonus Referral'}</p>
+                          {(grade?.bonuses?.referral_bonus || []).length ? (
+                            <div className="mt-1 space-y-1">
+                              {grade.bonuses.referral_bonus.map((bonus, idx) => (
+                                <p key={`rb-${grade.code}-${idx}`} className="text-[11px] text-[#9fb4df]">
+                                  L{bonus.depth}: <span className="text-[#e3ebfb]">{formatBonusValue(bonus)}</span>
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#7f96c3]">-</p>
+                          )}
+                        </div>
+
+                        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#10224a] px-2 py-2">
+                          <p className="text-[11px] font-medium text-[#cfe1ff]">{lang === 'en' ? 'Transaction Bonus' : 'Bonus Transaksi'}</p>
+                          {(grade?.bonuses?.transaction_bonus || []).length ? (
+                            <div className="mt-1 space-y-1">
+                              {grade.bonuses.transaction_bonus.map((bonus, idx) => (
+                                <p key={`tb-${grade.code}-${idx}`} className="text-[11px] text-[#9fb4df]">
+                                  L{bonus.depth}: <span className="text-[#e3ebfb]">{formatBonusValue(bonus)}</span>
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#7f96c3]">-</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </>
           ) : null}
         </div>
       ) : null}
 
-      {userId && menuKey === 'privacy' ? (
+      {userId && menuKey === 'referral' ? (
+        <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
+          {!referralEligible ? (
+            <p className="text-[12px] text-[#8ea6d7]">
+              {lang === 'en'
+                ? 'Referral share is available for Reseller, Agen, and Distributor only.'
+                : 'Menu referral hanya untuk level Reseller, Agen, dan Distributor.'}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-3 py-2">
+                <p className="text-[11px] text-[#8ea6d7]">{lang === 'en' ? 'Referral Code' : 'Kode Referral'}</p>
+                <p className="mt-1 text-[14px] font-semibold text-[#e3ebfb]">{referralCode}</p>
+              </div>
+
+              <div className="rounded-[10px] border border-[#6e8dc8]/25 bg-[#162a57] px-3 py-2">
+                <p className="text-[11px] text-[#8ea6d7]">{lang === 'en' ? 'Referral Link' : 'Link Referral'}</p>
+                <p className="mt-1 break-all text-[12px] text-[#c4d3f2]">{referralLink}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(referralCode)
+                    toast.success(lang === 'en' ? 'Referral code copied.' : 'Kode referral berhasil disalin.')
+                  }}
+                  className="cursor-pointer rounded-full border border-[#6e8dc8]/35 bg-[#0f2046] py-2 text-[12px] text-[#e3ebfb]"
+                >
+                  {lang === 'en' ? 'Copy Code' : 'Salin Kode'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(referralLink)
+                    toast.success(lang === 'en' ? 'Referral link copied.' : 'Link referral berhasil disalin.')
+                  }}
+                  className="cursor-pointer rounded-full border border-[#6e8dc8]/35 bg-[#0f2046] py-2 text-[12px] text-[#e3ebfb]"
+                >
+                  {lang === 'en' ? 'Copy Link' : 'Salin Link'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (navigator.share) {
+                    await navigator.share({
+                      title: 'Executive PI Referral',
+                      text: `Use my referral code: ${referralCode}`,
+                      url: referralLink,
+                    })
+                    return
+                  }
+                  await navigator.clipboard.writeText(referralLink)
+                  toast.info(lang === 'en' ? 'Share not supported, link copied.' : 'Share tidak didukung, link disalin.')
+                }}
+                className="w-full cursor-pointer rounded-full bg-[#274786] py-2 text-[12px] font-medium text-[#e3ebfb]"
+              >
+                {lang === 'en' ? 'Share Referral Link' : 'Bagikan Link Referral'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {menuKey === 'privacy' ? (
         <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
           <h3 className="text-[13px] font-medium text-[#e3ebfb]">{lang === 'en' ? 'Privacy Policy' : 'Kebijakan Privasi'}</h3>
           {lang === 'en' ? (
@@ -391,7 +521,7 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
         </div>
       ) : null}
 
-      {userId && menuKey === 'terms' ? (
+      {menuKey === 'terms' ? (
         <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
           <h3 className="text-[13px] font-medium text-[#e3ebfb]">{lang === 'en' ? 'Terms & Conditions' : 'Syarat & Ketentuan'}</h3>
           {lang === 'en' ? (
@@ -446,7 +576,7 @@ export default function ProfileMenuPage({ user, onUserUpdated, wishlistItems = [
         </div>
       ) : null}
 
-      {userId && menuKey === 'help' ? (
+      {menuKey === 'help' ? (
         <div className="rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3 text-[12px] text-[#c4d3f2]">
           {lang === 'en' ? 'Contact support: support@pi-executive.com' : 'Hubungi support: support@pi-executive.com'}
         </div>

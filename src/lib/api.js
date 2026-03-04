@@ -172,10 +172,10 @@ export const api = {
     })
   },
 
-  createUser({ name, email, phone, password, piAuth = null }) {
+  createUser({ name, email, phone, password, referralCode = null, piAuth = null }) {
     return request('/api/users', {
       method: 'POST',
-      body: { name, email, phone, password, piAuth },
+      body: { name, email, phone, password, referralCode, piAuth },
     })
   },
 

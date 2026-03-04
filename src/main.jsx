@@ -5,6 +5,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
 import App from './App.jsx'
 import { I18nProvider } from './lib/i18n.jsx'
+import { isPiBrowserRequiredHost, isPiSdkEnabledHost, isTokoDomain, resolvePiSandboxModeByHost } from './lib/domainMode.js'
 
 function isPiBrowserClient() {
   if (typeof window === 'undefined') return false
@@ -36,15 +37,9 @@ function isPiBrowserClient() {
   )
 }
 
-function isProtectedPiHost() {
-  if (typeof window === 'undefined') return false
-  const host = String(window.location?.hostname || '').toLowerCase()
-  return host === 'mall.pi-executive.com' || host === 'store.pi-executive.com'
-}
-
 function enforcePiBrowserOnly() {
   if (typeof window === 'undefined') return
-  if (!isProtectedPiHost()) return
+  if (!isPiBrowserRequiredHost()) return
 
   const currentPath = String(window.location?.pathname || '/')
   const isRequiredPage = currentPath === '/pi-browser-required'
@@ -73,6 +68,9 @@ function configurePiBrowserUi() {
   if (isAndroid) {
     root.setAttribute('data-android', 'true')
   }
+  if (isTokoDomain()) {
+    root.setAttribute('data-host-mode', 'toko')
+  }
 
   if (isAndroid) {
     const applyAndroidNavInset = () => {
@@ -99,17 +97,10 @@ function configurePiBrowserUi() {
   }
 }
 
-function resolvePiSandboxMode() {
-  if (typeof window === 'undefined') return false
-  const host = String(window.location?.hostname || '').toLowerCase()
-  if (host === 'store.pi-executive.com') return true
-  if (host === 'mall.pi-executive.com') return false
-  return false
-}
-
 function bootPiSdk() {
   if (typeof window === 'undefined') return
-  const sandbox = resolvePiSandboxMode()
+  if (!isPiSdkEnabledHost()) return
+  const sandbox = resolvePiSandboxModeByHost()
 
   const tryInit = () => {
     if (window.Pi?.init) {

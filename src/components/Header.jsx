@@ -2,7 +2,7 @@ import { Search, ShoppingCart } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../lib/i18n'
 
-export default function Header({ onOpenDrawer, searchQuery, onSearchChange, cartCount = 0 }) {
+export default function Header({ searchQuery, onSearchChange, cartCount = 0 }) {
   const { lang, setLang, t } = useI18n()
   const navigate = useNavigate()
 
@@ -47,9 +47,6 @@ export default function Header({ onOpenDrawer, searchQuery, onSearchChange, cart
               {cartCount > 99 ? '99+' : cartCount}
             </span>
           ) : null}
-        </button>
-        <button type="button" onClick={onOpenDrawer} className="grid h-8 w-8 place-items-center" aria-label={t('openMenu')}>
-          <img src="/assets/img/icons/menu.svg" alt="" className="h-6 w-6 opacity-90" />
         </button>
       </div>
     </header>

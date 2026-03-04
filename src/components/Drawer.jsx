@@ -24,11 +24,14 @@ export default function Drawer({ open, onClose, user, onLogout }) {
   )
   const profileMenuItems = useMemo(() => {
     const currentCode = String(profile.membershipCode || 'member').toLowerCase()
+    const referralEligible = ['reseller', 'agen', 'distributor'].includes(currentCode)
     return profileMenus.filter((menu) => {
-      if (menu.key !== 'upgrade') return true
-      return currentCode !== 'distributor'
+      if (menu.key === 'upgrade') return false
+      if (menu.key === 'referral') return referralEligible
+      return true
     })
   }, [profile.membershipCode])
+  const isPublicProfileMenu = (key) => ['privacy', 'terms', 'help'].includes(String(key || '').toLowerCase())
 
   function go(to) {
     navigate(to)
@@ -90,9 +93,11 @@ export default function Drawer({ open, onClose, user, onLogout }) {
               <button
                 type="button"
                 onClick={() => go(`/profile/${menu.key}`)}
-                disabled={!userId}
+                disabled={!userId && !isPublicProfileMenu(menu.key)}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition-colors ${
-                  userId ? 'text-[#c4d3f2] hover:bg-[#1a3269]' : 'cursor-not-allowed text-[#6f86b5] opacity-55'
+                  userId || isPublicProfileMenu(menu.key)
+                    ? 'text-[#c4d3f2] hover:bg-[#1a3269]'
+                    : 'cursor-not-allowed text-[#6f86b5] opacity-55'
                 }`}
               >
                 <menu.icon className="h-4 w-4 text-[#9fb4df]" strokeWidth={2} />

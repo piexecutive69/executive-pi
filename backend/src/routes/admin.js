@@ -294,11 +294,19 @@ export async function adminRoutes(app) {
         for (const item of levels) {
           const levelId = toInt(item?.level_id)
           if (!levelId) throw new Error('Invalid level_id on levels payload')
-          const upgradeFeeIdr = Number(item?.upgrade_fee_idr || 0)
-          const upgradeFeePi = Number(item?.upgrade_fee_pi || 0)
+          let upgradeFeeIdr = Number(item?.upgrade_fee_idr || 0)
+          let upgradeFeePi = Number(item?.upgrade_fee_pi || 0)
           const isActive = toBooleanInt(item?.is_active, 1)
           if (!Number.isFinite(upgradeFeeIdr) || upgradeFeeIdr < 0) throw new Error('upgrade_fee_idr must be >= 0')
           if (!Number.isFinite(upgradeFeePi) || upgradeFeePi < 0) throw new Error('upgrade_fee_pi must be >= 0')
+          const [levelRows] = await app.mysql.query('SELECT code FROM membership_levels WHERE id = ? LIMIT 1', [levelId])
+          if (!levelRows.length) throw new Error(`membership level not found: ${levelId}`)
+          const levelCode = String(levelRows[0].code || '').toLowerCase()
+          if (levelCode === 'member') {
+            // Base level cannot have upgrade fee.
+            upgradeFeeIdr = 0
+            upgradeFeePi = 0
+          }
 
           await app.mysql.query(
             `UPDATE membership_levels
@@ -312,7 +320,8 @@ export async function adminRoutes(app) {
           const id = toInt(item?.id, 0)
           const ruleType = String(item?.rule_type || '').trim().toLowerCase()
           const levelId = toInt(item?.for_level_id || item?.level_id)
-          const depth = toInt(item?.depth)
+          const requestedDepth = toInt(item?.depth)
+          const depth = ruleType === 'upgrade_bonus' ? 1 : requestedDepth
           const bonusMode = String(item?.bonus_mode || 'fixed').trim().toLowerCase()
           const bonusValue = Number(item?.bonus_value || 0)
           // Bonus distribution is IDR-only.
@@ -326,15 +335,18 @@ export async function adminRoutes(app) {
           if (!BONUS_CURRENCIES.has(bonusCurrency)) throw new Error(`Invalid bonus_currency: ${bonusCurrency || '-'}`)
           if (!Number.isFinite(bonusValue) || bonusValue < 0) throw new Error('bonus_value must be >= 0')
 
-          const [levels] = await app.mysql.query('SELECT id FROM membership_levels WHERE id = ? LIMIT 1', [levelId])
+          const [levels] = await app.mysql.query('SELECT id, code FROM membership_levels WHERE id = ? LIMIT 1', [levelId])
           if (!levels.length) throw new Error(`membership level not found: ${levelId}`)
+          const targetLevelCode = String(levels[0].code || '').toLowerCase()
+          // Member never receives affiliate bonus.
+          const normalizedIsActive = targetLevelCode === 'member' ? 0 : isActive
 
           if (id > 0) {
             await app.mysql.query(
               `UPDATE affiliate_bonus_rules
                SET rule_type = ?, for_level_id = ?, depth = ?, bonus_mode = ?, bonus_value = ?, bonus_currency = ?, is_active = ?
                WHERE id = ?`,
-              [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, isActive, id],
+              [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, normalizedIsActive, id],
             )
           } else {
             const [existing] = await app.mysql.query(
@@ -350,18 +362,26 @@ export async function adminRoutes(app) {
                 `UPDATE affiliate_bonus_rules
                  SET bonus_mode = ?, bonus_value = ?, is_active = ?
                  WHERE id = ?`,
-                [bonusMode, bonusValue, isActive, existing[0].id],
+                [bonusMode, bonusValue, normalizedIsActive, existing[0].id],
               )
             } else {
               await app.mysql.query(
                 `INSERT INTO affiliate_bonus_rules
                    (rule_type, for_level_id, depth, bonus_mode, bonus_value, bonus_currency, is_active)
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, isActive],
+                [ruleType, levelId, depth, bonusMode, bonusValue, bonusCurrency, normalizedIsActive],
               )
             }
           }
         }
+
+        // Safety net: member level must never receive bonus.
+        await app.mysql.query(
+          `UPDATE affiliate_bonus_rules abr
+           JOIN membership_levels ml ON ml.id = abr.for_level_id
+           SET abr.is_active = 0
+           WHERE LOWER(ml.code) = 'member'`,
+        )
 
         if (physicalMarkup) {
           const markupMode = String(physicalMarkup.markup_mode || 'fixed').trim().toLowerCase()

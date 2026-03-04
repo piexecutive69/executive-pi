@@ -69,6 +69,16 @@ export async function userRoutes(app) {
     return parsed || null
   }
 
+  function parseReferralCode(input) {
+    const raw = toNullableString(input)
+    if (!raw) return null
+    const cleaned = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const match = cleaned.match(/^(?:EP|REF)?(\d{1,12})$/)
+    if (!match) return null
+    const userId = Number(match[1])
+    return Number.isInteger(userId) && userId > 0 ? userId : null
+  }
+
   function makePiIdentity(uid) {
     const safeUid = String(uid || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
     const shortUid = safeUid.slice(0, 28) || randomUUID().replace(/-/g, '').slice(0, 16)
@@ -697,6 +707,52 @@ export async function userRoutes(app) {
       )
 
       const upgradeOptions = allLevels.filter((level) => Number(level.sort_order) > currentSort)
+      const [bonusRules] = await app.mysql.query(
+        `SELECT
+           abr.for_level_id AS level_id,
+           abr.rule_type,
+           abr.depth,
+           abr.bonus_mode,
+           abr.bonus_value,
+           abr.bonus_currency
+         FROM affiliate_bonus_rules abr
+         JOIN membership_levels ml ON ml.id = abr.for_level_id
+         WHERE abr.is_active = 1
+           AND abr.bonus_currency = 'idr'
+           AND ml.is_active = 1
+           AND LOWER(ml.code) <> 'member'
+         ORDER BY ml.sort_order ASC, abr.rule_type ASC, abr.depth ASC`,
+      )
+      const bonusMap = new Map()
+      for (const row of bonusRules) {
+        const levelId = Number(row.level_id || 0)
+        if (!levelId) continue
+        if (!bonusMap.has(levelId)) {
+          bonusMap.set(levelId, { transaction_bonus: [], referral_bonus: [] })
+        }
+        const bucket = bonusMap.get(levelId)
+        const bonusItem = {
+          depth: Number(row.depth || 1),
+          bonus_mode: String(row.bonus_mode || 'fixed'),
+          bonus_value: Number(row.bonus_value || 0),
+          bonus_currency: String(row.bonus_currency || 'idr'),
+        }
+        if (String(row.rule_type) === 'transaction_bonus') {
+          bucket.transaction_bonus.push(bonusItem)
+        } else if (String(row.rule_type) === 'upgrade_bonus') {
+          bucket.referral_bonus.push(bonusItem)
+        }
+      }
+      const gradeDetails = allLevels
+        .filter((level) => String(level.code || '').toLowerCase() !== 'member')
+        .map((level) => ({
+          level_id: Number(level.level_id),
+          code: level.code,
+          display_name: level.display_name,
+          sort_order: Number(level.sort_order),
+          upgrade_fee_idr: Number(level.upgrade_fee_idr || 0),
+          bonuses: bonusMap.get(Number(level.level_id)) || { transaction_bonus: [], referral_bonus: [] },
+        }))
 
       return {
         current: currentMembership
@@ -716,6 +772,7 @@ export async function userRoutes(app) {
           upgrade_fee_idr: Number(level.upgrade_fee_idr || 0),
           upgrade_fee_pi: Number(level.upgrade_fee_pi || 0),
         })),
+        grade_details: gradeDetails,
       }
     },
   )
@@ -760,14 +817,10 @@ export async function userRoutes(app) {
         return reply.code(400).send({ message: 'Level saat ini sudah tertinggi (Distributor).' })
       }
 
-      let target = null
-      if (toLevelCode) {
-        target = eligibleLevels.find((level) => String(level.code).toLowerCase() === toLevelCode) || null
-        if (!target) {
-          return reply.code(400).send({ message: 'Target level tidak valid untuk upgrade.' })
-        }
-      } else {
-        target = eligibleLevels[0]
+      // Upgrade must be step-by-step: only to the immediate next level.
+      const target = eligibleLevels[0]
+      if (toLevelCode && String(target.code || '').toLowerCase() !== toLevelCode) {
+        return reply.code(400).send({ message: `Upgrade hanya boleh 1 level ke ${target.display_name}.` })
       }
 
       const feeIdr = Number(target.upgrade_fee_idr || 0)
@@ -1275,6 +1328,7 @@ export async function userRoutes(app) {
             email: { type: 'string' },
             phone: { type: 'string' },
             password: { type: 'string', minLength: 6 },
+            referralCode: { type: ['string', 'null'] },
             piAuth: {
               type: ['object', 'null'],
               properties: {
@@ -1291,7 +1345,7 @@ export async function userRoutes(app) {
       },
     },
     async (request, reply) => {
-      const { name, email, phone, password, piAuth } = request.body || {}
+      const { name, email, phone, password, referralCode, piAuth } = request.body || {}
       if (!name || !email || !phone || !password) {
         return reply.code(400).send({ message: 'name, email, phone, password are required' })
       }
@@ -1301,21 +1355,73 @@ export async function userRoutes(app) {
         return reply.code(409).send({ message: 'Email or phone already registered' })
       }
 
-      const [result] = await app.mysql.query(
-        `INSERT INTO users (name, email, phone, password_hash, idr_balance, pi_balance, status)
-         VALUES (?, ?, ?, SHA2(?, 256), 0, 0, 'active')`,
-        [name, email, phone, password],
-      )
+      const referrerUserId = parseReferralCode(referralCode)
+      if (toNullableString(referralCode) && !referrerUserId) {
+        return reply.code(400).send({ message: 'Kode referral tidak valid.' })
+      }
+      if (referrerUserId) {
+        const [referrerRows] = await app.mysql.query('SELECT id FROM users WHERE id = ? LIMIT 1', [referrerUserId])
+        if (!referrerRows.length) {
+          return reply.code(400).send({ message: 'Kode referral tidak ditemukan.' })
+        }
+      }
+
+      await app.mysql.query('START TRANSACTION')
+      let newUserId = 0
+      try {
+        const [result] = await app.mysql.query(
+          `INSERT INTO users (name, email, phone, password_hash, idr_balance, pi_balance, status)
+           VALUES (?, ?, ?, SHA2(?, 256), 0, 0, 'active')`,
+          [name, email, phone, password],
+        )
+        newUserId = Number(result.insertId)
+
+        if (referrerUserId && newUserId) {
+          const relations = [{ depth: 1, uplineUserId: referrerUserId }]
+          const [uplineRows] = await app.mysql.query(
+            `SELECT upline_user_id, depth
+             FROM affiliate_relations
+             WHERE user_id = ? AND depth IN (1, 2)
+             ORDER BY depth ASC`,
+            [referrerUserId],
+          )
+          for (const row of uplineRows) {
+            const depth = Number(row.depth) + 1
+            const uplineUserId = Number(row.upline_user_id)
+            if (depth >= 1 && depth <= 3 && uplineUserId > 0 && uplineUserId !== newUserId) {
+              relations.push({ depth, uplineUserId })
+            }
+          }
+
+          const dedup = new Map()
+          for (const rel of relations) {
+            if (!dedup.has(rel.depth)) dedup.set(rel.depth, rel.uplineUserId)
+          }
+          for (const [depth, uplineUserId] of dedup.entries()) {
+            await app.mysql.query(
+              `INSERT INTO affiliate_relations (user_id, upline_user_id, depth)
+               VALUES (?, ?, ?)
+               ON DUPLICATE KEY UPDATE upline_user_id = VALUES(upline_user_id)`,
+              [newUserId, uplineUserId, depth],
+            )
+          }
+        }
+
+        await app.mysql.query('COMMIT')
+      } catch (error) {
+        await app.mysql.query('ROLLBACK')
+        return reply.code(500).send({ message: error.message || 'Gagal membuat user.' })
+      }
 
       const piWallet = piAuth
         ? await syncPiWalletForUser({
-            userId: Number(result.insertId),
+            userId: newUserId,
             piAuthPayload: piAuth,
             fallbackName: String(name),
           })
         : null
 
-      const createdUser = await getUserById(Number(result.insertId))
+      const createdUser = await getUserById(newUserId)
 
       return reply.code(201).send({
         ...createdUser,

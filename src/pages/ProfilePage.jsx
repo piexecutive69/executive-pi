@@ -96,11 +96,15 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
   )
   const profileMenuItems = useMemo(() => {
     const currentCode = String(displayUser.membershipCode || 'member').toLowerCase()
+    const referralEligible = ['reseller', 'agen', 'distributor'].includes(currentCode)
     return profileMenus.filter((menu) => {
-      if (menu.key !== 'upgrade') return true
-      return currentCode !== 'distributor'
+      if (menu.key === 'upgrade') return false
+      if (menu.key === 'referral') return referralEligible
+      return true
     })
   }, [displayUser.membershipCode])
+  const canUpgradeLevel = String(displayUser.membershipCode || 'member').toLowerCase() !== 'distributor'
+  const isPublicProfileMenu = (key) => ['privacy', 'terms', 'help'].includes(String(key || '').toLowerCase())
 
   return (
     <section className="pb-20">
@@ -161,6 +165,21 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
         </div>
       ) : null}
 
+      {userId && canUpgradeLevel ? (
+        <button
+          type="button"
+          onClick={() => navigate('/profile/upgrade')}
+          className="mt-3 w-full cursor-pointer rounded-xl border border-[#7ba3ff]/45 bg-gradient-to-r from-[#2a4c94] to-[#3159ad] px-4 py-3 text-left shadow-[0_10px_24px_rgba(29,78,216,.32)]"
+        >
+          <p className="text-[18px] font-bold text-[#f1f7ff]">
+            {lang === 'en' ? 'Upgrade' : 'Upgrade'}
+          </p>
+          <p className="mt-1 text-[11px] tracking-wide text-[#d3e2ff]">
+            {lang === 'en' ? 'Your grade determines your benefits.' : 'Grade mu menentukan keuntunganmu.'}
+          </p>
+        </button>
+      ) : null}
+
       {userId && piSession?.walletAddress ? (
         <div className="mt-3 rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] p-3">
           <p className="text-[11px] text-[#8ea6d7]">Pi Wallet</p>
@@ -173,9 +192,9 @@ export default function ProfilePage({ user, onLogout, onUserUpdated }) {
           <button
             key={menu.key}
             type="button"
-            disabled={!userId}
+            disabled={!userId && !isPublicProfileMenu(menu.key)}
             onClick={() => navigate(`/profile/${menu.key}`)}
-            className={`flex w-full items-center gap-2 rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] px-3 py-2 text-left ${!userId ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'}`}
+            className={`flex w-full items-center gap-2 rounded-md border border-[#6e8dc8]/20 bg-[#121f3f] px-3 py-2 text-left ${!userId && !isPublicProfileMenu(menu.key) ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'}`}
           >
             <menu.icon className="h-4 w-4 text-[#9fb4df]" strokeWidth={2} />
             <span className="text-[12px] text-[#c4d3f2]">{lang === 'en' ? menu.enLabel : menu.idLabel}</span>
