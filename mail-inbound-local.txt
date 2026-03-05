@@ -1,0 +1,8 @@
+From: support@pi-executive.com
+To: support@pi-executive.com
+Subject: Inbound receive test local
+Date: Wed, 04 Mar 2026 20:42:00 +0700
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Tes inbound lokal ke mailbox support.

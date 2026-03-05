@@ -1,0 +1,9 @@
+From: support@pi-executive.com
+To: denidarmayana88@gmail.com
+Subject: Test Email from pi-executive.com
+Date: Wed, 04 Mar 2026 19:44:00 +0700
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Halo, ini email test dari server mail.pi-executive.com.
+Jika email ini masuk, SMTP outbound sudah berjalan.

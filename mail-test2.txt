@@ -1,0 +1,8 @@
+From: support@pi-executive.com
+To: denidarmayana88@gmail.com
+Subject: Post-hardening mail test
+Date: Wed, 04 Mar 2026 20:21:00 +0700
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Mail test after security hardening.
